@@ -44,6 +44,12 @@ and the checkpoint path you provided is:
 TOOB_Simulation/checkpoints/df/max_f1.pth
 ```
 
+The cluster pseudo-label mapping is bundled with TOOB:
+
+```text
+TOOB_Simulation/assets/website_to_set_1000_30_1.json
+```
+
 ## One Command Runner
 
 Ubuntu runner:
@@ -119,7 +125,7 @@ Use Palette's `website_to_set_*.npy` mapping:
 ```powershell
 python TOOB_Simulation/EXP/02_make_pseudo_labels.py `
   --labels-npz TOOB_Simulation/outputs/burst_dataset.npz `
-  --mapping D:/workspace/WFP-Defence-lib/Palette_Simulation/palette/cluster_result/website_to_set_1000_30_1.npy `
+  --mapping TOOB_Simulation/assets/website_to_set_1000_30_1.json `
   --output TOOB_Simulation/outputs/pseudo_labels.npz `
   --json-output TOOB_Simulation/outputs/pseudo_labels.json `
   --drop-unmapped

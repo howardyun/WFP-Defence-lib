@@ -23,7 +23,7 @@ fi
 DATASET="${DATASET:-TOOB_Simulation/data/raw/test.npz}"
 DATA_KEY="${DATA_KEY:-X}"
 LABELS_KEY="${LABELS_KEY:-y}"
-MAPPING="${MAPPING:-D:/workspace/WFP-Defence-lib/Palette_Simulation/palette/cluster_result/website_to_set_1000_30_1.npy}"
+MAPPING="${MAPPING:-TOOB_Simulation/assets/website_to_set_1000_30_1.json}"
 DF_BUILDER="${DF_BUILDER:-TOOB_Simulation/checkpoints/df/DF.py:DF}"
 DF_CHECKPOINT="${DF_CHECKPOINT:-TOOB_Simulation/checkpoints/df/max_f1.pth}"
 

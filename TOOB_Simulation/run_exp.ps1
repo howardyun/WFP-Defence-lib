@@ -9,7 +9,7 @@ $PythonExe = if ($env:PYTHON_BIN) { $env:PYTHON_BIN } else { "D:\Anaconda\envs\m
 $Dataset = if ($env:DATASET) { $env:DATASET } else { "TOOB_Simulation\data\raw\test.npz" }
 $DataKey = if ($env:DATA_KEY) { $env:DATA_KEY } else { "X" }
 $LabelsKey = if ($env:LABELS_KEY) { $env:LABELS_KEY } else { "y" }
-$Mapping = if ($env:MAPPING) { $env:MAPPING } else { "D:\workspace\WFP-Defence-lib\Palette_Simulation\palette\cluster_result\website_to_set_1000_30_1.npy" }
+$Mapping = if ($env:MAPPING) { $env:MAPPING } else { "TOOB_Simulation\assets\website_to_set_1000_30_1.json" }
 $DfBuilder = if ($env:DF_BUILDER) { $env:DF_BUILDER } else { "TOOB_Simulation\checkpoints\df\DF.py:DF" }
 $DfCheckpoint = if ($env:DF_CHECKPOINT) { $env:DF_CHECKPOINT } else { "TOOB_Simulation\checkpoints\df\max_f1.pth" }
 
@@ -100,4 +100,3 @@ Write-Host "[4/4] Export defended direction dataset"
 
 Write-Host "Done."
 Write-Host "Output dataset: $AdvDirectionNpz"
-
