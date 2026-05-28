@@ -1,0 +1,10 @@
+outputs/
+outputs_smoke/
+data/
+checkpoints/
+*.pt
+*.pth
+*.npz
+*.npy
+*.pkl
+__pycache__/
