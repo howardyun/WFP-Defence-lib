@@ -2,6 +2,7 @@ outputs/
 outputs_smoke/
 data/
 checkpoints/
+*.zip
 *.pt
 *.pth
 *.npz

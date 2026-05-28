@@ -11,26 +11,55 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from toob.cluster import cluster_websites
 from toob.data import load_npz_dataset, save_npz_dataset
 from toob.pseudo import labels_to_pseudo, load_website_to_set
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Create pseudo labels from Palette website_to_set mapping.")
-    parser.add_argument("--labels-npz", required=True, help=".npz file containing labels.")
-    parser.add_argument("--mapping", required=True, help="Palette website_to_set .npy or .json.")
+    parser = argparse.ArgumentParser(description="Create cluster pseudo labels from a burst dataset.")
+    parser.add_argument("--labels-npz", required=True, help=".npz file containing burst data and labels.")
+    parser.add_argument("--mapping", help="Optional precomputed website_to_set .npy or .json.")
     parser.add_argument("--output", required=True, help="Output .npz with labels and pseudo_labels.")
     parser.add_argument("--json-output", help="Optional readable JSON summary path. Defaults to output path with .json suffix.")
     parser.add_argument("--strategy", choices=("first", "random", "round_robin"), default="first")
-    parser.add_argument("--drop-unmapped", action="store_true", help="Drop labels missing from the Palette mapping.")
+    parser.add_argument("--drop-unmapped", action="store_true", help="Drop labels missing from the mapping.")
+    parser.add_argument("--exclude-labels", nargs="*", type=int, default=[], help="Labels excluded before clustering, e.g. open-world label 95.")
+    parser.add_argument("--set-size", type=int, default=30, help="Target anonymity set size.")
+    parser.add_argument("--rounds", type=int, default=1, help="Number of clustering rounds.")
+    parser.add_argument("--profile-method", choices=("super", "mean_abs", "mean_signed"), default="super")
     parser.add_argument("--seed", type=int, default=1)
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    _, labels = load_npz_dataset(args.labels_npz)
-    mapping = load_website_to_set(args.mapping)
+    bursts, labels = load_npz_dataset(args.labels_npz)
+    exclude_labels = set(args.exclude_labels)
+    if args.mapping:
+        mapping = load_website_to_set(args.mapping)
+        cluster_info = None
+        source = "mapping"
+    else:
+        cluster_result = cluster_websites(
+            bursts,
+            labels,
+            set_size=args.set_size,
+            rounds=args.rounds,
+            seed=args.seed,
+            exclude_labels=exclude_labels,
+            profile_method=args.profile_method,
+        )
+        mapping = cluster_result.website_to_set
+        cluster_info = {
+            "set_size": int(args.set_size),
+            "rounds": int(args.rounds),
+            "profile_method": args.profile_method,
+            "excluded_labels": sorted(int(v) for v in exclude_labels),
+            "site_labels": [int(v) for v in cluster_result.labels],
+            "total_sets": [[int(v) for v in anonymity_set] for anonymity_set in cluster_result.total_sets],
+        }
+        source = "toob_cluster"
     pseudo, keep_indices = labels_to_pseudo(
         labels,
         mapping,
@@ -46,7 +75,8 @@ def main() -> int:
     json_output.parent.mkdir(parents=True, exist_ok=True)
     summary = {
         "labels_npz": str(args.labels_npz),
-        "mapping": str(args.mapping),
+        "source": source,
+        "mapping": str(args.mapping) if args.mapping else None,
         "strategy": args.strategy,
         "drop_unmapped": bool(args.drop_unmapped),
         "total_samples": int(len(labels)),
@@ -54,6 +84,7 @@ def main() -> int:
         "dropped_samples": int(len(labels) - len(keep_indices)),
         "website_to_set": {str(k): v for k, v in sorted(mapping.items())},
         "pseudo_label_counts": {str(int(label)): int(count) for label, count in zip(unique, counts)},
+        "cluster": cluster_info,
         "samples": [
             {
                 "original_index": int(original_idx),

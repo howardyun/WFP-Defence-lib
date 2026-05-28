@@ -10,7 +10,7 @@ fingerprinting detectors.
 ## Idea
 
 1. Convert packet direction traces into burst sequences.
-2. Use Palette clustering output as pseudo labels.
+2. Cluster website burst profiles into pseudo-label anonymity sets.
 3. Train one generator `G_c` for each pseudo label `c`.
 4. `G_c(z)` outputs a non-negative burst perturbation vector.
 5. Apply the perturbation with:
@@ -42,12 +42,6 @@ and the checkpoint path you provided is:
 
 ```text
 TOOB_Simulation/checkpoints/df/max_f1.pth
-```
-
-The cluster pseudo-label mapping is bundled with TOOB:
-
-```text
-TOOB_Simulation/assets/website_to_set_1000_30_1.json
 ```
 
 ## One Command Runner
@@ -120,19 +114,22 @@ python TOOB_Simulation/EXP/01_make_burst_dataset.py `
 
 ## Step 2: Pseudo Labels
 
-Use Palette's `website_to_set_*.npy` mapping:
+Cluster website burst profiles and create pseudo labels:
 
 ```powershell
 python TOOB_Simulation/EXP/02_make_pseudo_labels.py `
   --labels-npz TOOB_Simulation/outputs/burst_dataset.npz `
-  --mapping TOOB_Simulation/assets/website_to_set_1000_30_1.json `
   --output TOOB_Simulation/outputs/pseudo_labels.npz `
   --json-output TOOB_Simulation/outputs/pseudo_labels.json `
+  --set-size 30 `
+  --rounds 1 `
+  --profile-method super `
+  --exclude-labels 95 `
   --drop-unmapped
 ```
 
 This step also writes a readable JSON summary with pseudo-label counts,
-website-to-set mapping, and per-sample label assignments.
+website-to-set mapping, cluster sets, and per-sample label assignments.
 
 ## Step 3: Train Generators With DF
 
@@ -152,8 +149,8 @@ python TOOB_Simulation/EXP/03_train_generators.py `
 This DF architecture consumes direction sequences with shape `[N, 1, 5000]`.
 During training, TOOB uses a differentiable soft burst-to-direction projection
 so gradients can flow from DF back into `G_c`. The provided checkpoint has 96
-output classes, so use `--num-classes 96`. The pseudo-label step can drop the
-open-world label if it is not present in the Palette mapping.
+output classes, so use `--num-classes 96`. The pseudo-label step excludes the
+open-world label `95` by default in the runners.
 
 For a quick smoke test, train only one pseudo label and one epoch:
 

@@ -12,7 +12,7 @@ PYTHON_BIN="${PYTHON_BIN:-python3}"
 DATASET="${DATASET:-TOOB_Simulation/data/raw/test.npz}"
 DATA_KEY="${DATA_KEY:-X}"
 LABELS_KEY="${LABELS_KEY:-y}"
-MAPPING="${MAPPING:-TOOB_Simulation/assets/website_to_set_1000_30_1.json}"
+MAPPING="${MAPPING:-}"
 DF_BUILDER="${DF_BUILDER:-TOOB_Simulation/checkpoints/df/DF.py:DF}"
 DF_CHECKPOINT="${DF_CHECKPOINT:-TOOB_Simulation/checkpoints/df/max_f1.pth}"
 
@@ -22,6 +22,10 @@ TRACE_LEN="${TRACE_LEN:-5000}"
 NUM_CLASSES="${NUM_CLASSES:-96}"
 PROJECTION_CHUNK_SIZE="${PROJECTION_CHUNK_SIZE:-64}"
 SOFT_PROJECTION_TAU="${SOFT_PROJECTION_TAU:-1.5}"
+SET_SIZE="${SET_SIZE:-30}"
+CLUSTER_ROUNDS="${CLUSTER_ROUNDS:-1}"
+PROFILE_METHOD="${PROFILE_METHOD:-super}"
+EXCLUDE_LABELS="${EXCLUDE_LABELS:-95}"
 
 SMOKE_LIMIT="${SMOKE_LIMIT:-200}"
 SMOKE_EPOCHS="${SMOKE_EPOCHS:-1}"
@@ -75,7 +79,8 @@ else
   echo "Usage: bash TOOB_Simulation/run_exp_ubuntu.sh [smoke|one|full]"
   echo ""
   echo "Environment overrides:"
-  echo "  PYTHON_BIN DATASET MAPPING DF_BUILDER DF_CHECKPOINT OUT_DIR"
+  echo "  PYTHON_BIN DATASET DF_BUILDER DF_CHECKPOINT OUT_DIR"
+  echo "  SET_SIZE CLUSTER_ROUNDS PROFILE_METHOD EXCLUDE_LABELS"
   echo "  FULL_EPOCHS FULL_BATCH_SIZE FULL_NOISE_DIM"
   echo "  SMOKE_LIMIT SMOKE_EPOCHS SMOKE_BATCH_SIZE SMOKE_NOISE_DIM"
   echo "  PSEUDO_LABEL for mode 'one'"
@@ -83,7 +88,12 @@ else
 fi
 
 require_file "$DATASET"
-require_file "$MAPPING"
+if [ -n "$MAPPING" ]; then
+  require_file "$MAPPING"
+  MAPPING_ARGS=(--mapping "$MAPPING")
+else
+  MAPPING_ARGS=()
+fi
 require_file "${DF_BUILDER%%:*}"
 require_file "$DF_CHECKPOINT"
 require_python_deps
@@ -107,13 +117,23 @@ echo "[1/4] Direction sequence -> burst dataset"
   --max-bursts "$MAX_BURSTS" \
   "${LIMIT_ARGS[@]}"
 
-echo "[2/4] Palette mapping -> pseudo labels"
+EXCLUDE_ARGS=()
+if [ -n "$EXCLUDE_LABELS" ]; then
+  # shellcheck disable=SC2206
+  EXCLUDE_ARGS=(--exclude-labels $EXCLUDE_LABELS)
+fi
+
+echo "[2/4] Cluster burst profiles -> pseudo labels"
 "$PYTHON_BIN" TOOB_Simulation/EXP/02_make_pseudo_labels.py \
   --labels-npz "$BURST_NPZ" \
-  --mapping "$MAPPING" \
   --output "$PSEUDO_NPZ" \
   --json-output "$PSEUDO_JSON" \
-  --drop-unmapped
+  --set-size "$SET_SIZE" \
+  --rounds "$CLUSTER_ROUNDS" \
+  --profile-method "$PROFILE_METHOD" \
+  --drop-unmapped \
+  "${MAPPING_ARGS[@]}" \
+  "${EXCLUDE_ARGS[@]}"
 
 echo "[3/4] Train cluster-wise burst generators"
 "$PYTHON_BIN" TOOB_Simulation/EXP/03_train_generators.py \

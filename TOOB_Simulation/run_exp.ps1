@@ -9,7 +9,7 @@ $PythonExe = if ($env:PYTHON_BIN) { $env:PYTHON_BIN } else { "D:\Anaconda\envs\m
 $Dataset = if ($env:DATASET) { $env:DATASET } else { "TOOB_Simulation\data\raw\test.npz" }
 $DataKey = if ($env:DATA_KEY) { $env:DATA_KEY } else { "X" }
 $LabelsKey = if ($env:LABELS_KEY) { $env:LABELS_KEY } else { "y" }
-$Mapping = if ($env:MAPPING) { $env:MAPPING } else { "TOOB_Simulation\assets\website_to_set_1000_30_1.json" }
+$Mapping = if ($env:MAPPING) { $env:MAPPING } else { "" }
 $DfBuilder = if ($env:DF_BUILDER) { $env:DF_BUILDER } else { "TOOB_Simulation\checkpoints\df\DF.py:DF" }
 $DfCheckpoint = if ($env:DF_CHECKPOINT) { $env:DF_CHECKPOINT } else { "TOOB_Simulation\checkpoints\df\max_f1.pth" }
 
@@ -19,6 +19,10 @@ $TraceLen = if ($env:TRACE_LEN) { $env:TRACE_LEN } else { "5000" }
 $NumClasses = if ($env:NUM_CLASSES) { $env:NUM_CLASSES } else { "96" }
 $ProjectionChunkSize = if ($env:PROJECTION_CHUNK_SIZE) { $env:PROJECTION_CHUNK_SIZE } else { "64" }
 $SoftProjectionTau = if ($env:SOFT_PROJECTION_TAU) { $env:SOFT_PROJECTION_TAU } else { "1.5" }
+$SetSize = if ($env:SET_SIZE) { $env:SET_SIZE } else { "30" }
+$ClusterRounds = if ($env:CLUSTER_ROUNDS) { $env:CLUSTER_ROUNDS } else { "1" }
+$ProfileMethod = if ($env:PROFILE_METHOD) { $env:PROFILE_METHOD } else { "super" }
+$ExcludeLabels = if ($env:EXCLUDE_LABELS) { $env:EXCLUDE_LABELS } else { "95" }
 
 if ($Mode -eq "smoke") {
     $RunDir = "${OutDir}_smoke"
@@ -61,13 +65,25 @@ Write-Host "[1/4] Direction sequence -> burst dataset"
     --max-bursts $MaxBursts `
     @LimitArgs
 
-Write-Host "[2/4] Palette mapping -> pseudo labels"
+Write-Host "[2/4] Cluster burst profiles -> pseudo labels"
+$MappingArgs = @()
+if ($Mapping) {
+    $MappingArgs = @("--mapping", $Mapping)
+}
+$ExcludeArgs = @()
+if ($ExcludeLabels) {
+    $ExcludeArgs = @("--exclude-labels") + $ExcludeLabels.Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries)
+}
 & $PythonExe TOOB_Simulation\EXP\02_make_pseudo_labels.py `
     --labels-npz $BurstNpz `
-    --mapping $Mapping `
     --output $PseudoNpz `
     --json-output $PseudoJson `
-    --drop-unmapped
+    --set-size $SetSize `
+    --rounds $ClusterRounds `
+    --profile-method $ProfileMethod `
+    --drop-unmapped `
+    @MappingArgs `
+    @ExcludeArgs
 
 Write-Host "[3/4] Train cluster-wise burst generators"
 & $PythonExe TOOB_Simulation\EXP\03_train_generators.py `
