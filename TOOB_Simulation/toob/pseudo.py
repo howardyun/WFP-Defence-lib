@@ -9,7 +9,7 @@ import numpy as np
 from .data import labels_to_int
 
 
-def load_website_to_set(path: str | Path) -> dict[int, list[int]]:
+def load_website_to_pseudo_label(path: str | Path) -> dict[int, int]:
     path = Path(path)
     suffix = path.suffix.lower()
     if suffix == ".npy":
@@ -23,44 +23,44 @@ def load_website_to_set(path: str | Path) -> dict[int, list[int]]:
     else:
         raise ValueError(f"Unsupported mapping format: {path}")
 
-    mapping: dict[int, list[int]] = {}
+    if "website_to_pseudo_label" in raw:
+        raw = raw["website_to_pseudo_label"]
+
+    mapping: dict[int, int] = {}
     for key, value in raw.items():
         site = int(key)
         if isinstance(value, (list, tuple, np.ndarray)):
-            mapping[site] = [int(v) for v in value]
+            if len(value) != 1:
+                raise ValueError(
+                    "Expected website_to_pseudo_label values to be scalar pseudo labels. "
+                    "Use a mapping like {'0': 0, '1': 0, '2': 1}."
+                )
+            mapping[site] = int(value[0])
         else:
-            mapping[site] = [int(value)]
+            mapping[site] = int(value)
     return mapping
 
 
 def labels_to_pseudo(
     labels: np.ndarray,
-    website_to_set: dict[int, list[int]],
+    website_to_pseudo_label: dict[int, int],
     *,
-    strategy: str = "first",
-    seed: int = 1,
     drop_unmapped: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Map real website labels to cluster pseudo labels."""
     labels_int = labels_to_int(labels)
-    rng = np.random.default_rng(seed)
     pseudo = []
     keep_indices = []
 
     for idx, label in enumerate(labels_int):
-        sets = website_to_set.get(int(label))
-        if not sets:
+        pseudo_value = website_to_pseudo_label.get(int(label))
+        if pseudo_value is None:
             if drop_unmapped:
                 continue
             raise KeyError(f"No pseudo label mapping found for website label {int(label)}")
-        if strategy == "first":
-            pseudo_value = sets[0]
-        elif strategy == "random":
-            pseudo_value = rng.choice(sets)
-        elif strategy == "round_robin":
-            pseudo_value = sets[idx % len(sets)]
-        else:
-            raise ValueError(f"Unknown pseudo-label strategy: {strategy}")
         keep_indices.append(idx)
         pseudo.append(pseudo_value)
     return np.asarray(pseudo, dtype=np.int64), np.asarray(keep_indices, dtype=np.int64)
+
+
+load_website_to_set = load_website_to_pseudo_label

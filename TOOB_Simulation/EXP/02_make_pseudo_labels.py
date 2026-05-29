@@ -11,16 +11,15 @@ from _bootstrap import ensure_project_root
 ensure_project_root(required_modules=("cluster", "data", "pseudo"))
 from toob.cluster import cluster_websites
 from toob.data import load_npz_dataset, save_npz_dataset
-from toob.pseudo import labels_to_pseudo, load_website_to_set
+from toob.pseudo import labels_to_pseudo, load_website_to_pseudo_label
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create cluster pseudo labels from a burst dataset.")
     parser.add_argument("--labels-npz", required=True, help=".npz file containing burst data and labels.")
-    parser.add_argument("--mapping", help="Optional precomputed website_to_set .npy or .json.")
+    parser.add_argument("--mapping", help="Optional precomputed website_to_pseudo_label .npy or .json.")
     parser.add_argument("--output", required=True, help="Output .npz with labels and pseudo_labels.")
     parser.add_argument("--json-output", help="Optional readable JSON summary path. Defaults to output path with .json suffix.")
-    parser.add_argument("--strategy", choices=("first", "random", "round_robin"), default="first")
     parser.add_argument("--drop-unmapped", action="store_true", help="Drop labels missing from the mapping.")
     parser.add_argument("--exclude-labels", nargs="*", type=int, default=[], help="Labels excluded before clustering, e.g. open-world label 95.")
     parser.add_argument("--set-size", type=int, default=30, help="Target anonymity set size.")
@@ -35,7 +34,14 @@ def main() -> int:
     bursts, labels = load_npz_dataset(args.labels_npz)
     exclude_labels = set(args.exclude_labels)
     if args.mapping:
-        mapping = load_website_to_set(args.mapping)
+        website_to_pseudo_label = load_website_to_pseudo_label(args.mapping)
+        grouped: dict[int, list[int]] = {}
+        for website, pseudo_label in website_to_pseudo_label.items():
+            grouped.setdefault(pseudo_label, []).append(website)
+        pseudo_label_to_websites = {
+            pseudo_label: sorted(websites)
+            for pseudo_label, websites in sorted(grouped.items())
+        }
         cluster_info = None
         source = "mapping"
     else:
@@ -48,21 +54,20 @@ def main() -> int:
             exclude_labels=exclude_labels,
             profile_method=args.profile_method,
         )
-        mapping = cluster_result.website_to_set
+        website_to_pseudo_label = cluster_result.website_to_pseudo_label
+        pseudo_label_to_websites = cluster_result.pseudo_label_to_websites
         cluster_info = {
             "set_size": int(args.set_size),
             "rounds": int(args.rounds),
             "profile_method": args.profile_method,
             "excluded_labels": sorted(int(v) for v in exclude_labels),
             "site_labels": [int(v) for v in cluster_result.labels],
-            "total_sets": [[int(v) for v in anonymity_set] for anonymity_set in cluster_result.total_sets],
+            "num_pseudo_labels": len(cluster_result.pseudo_label_to_websites),
         }
         source = "toob_cluster"
     pseudo, keep_indices = labels_to_pseudo(
         labels,
-        mapping,
-        strategy=args.strategy,
-        seed=args.seed,
+        website_to_pseudo_label,
         drop_unmapped=args.drop_unmapped,
     )
     kept_labels = labels[keep_indices]
@@ -75,12 +80,18 @@ def main() -> int:
         "labels_npz": str(args.labels_npz),
         "source": source,
         "mapping": str(args.mapping) if args.mapping else None,
-        "strategy": args.strategy,
         "drop_unmapped": bool(args.drop_unmapped),
         "total_samples": int(len(labels)),
         "kept_samples": int(len(keep_indices)),
         "dropped_samples": int(len(labels) - len(keep_indices)),
-        "website_to_set": {str(k): v for k, v in sorted(mapping.items())},
+        "website_to_pseudo_label": {
+            str(k): int(v)
+            for k, v in sorted(website_to_pseudo_label.items())
+        },
+        "pseudo_label_to_websites": {
+            str(k): [int(v) for v in websites]
+            for k, websites in sorted(pseudo_label_to_websites.items())
+        },
         "pseudo_label_counts": {str(int(label)): int(count) for label, count in zip(unique, counts)},
         "cluster": cluster_info,
         "samples": [
