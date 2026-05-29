@@ -3,14 +3,12 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-import sys
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+from _bootstrap import ensure_project_root
 
+ensure_project_root(required_modules=("cluster", "data", "pseudo"))
 from toob.cluster import cluster_websites
 from toob.data import load_npz_dataset, save_npz_dataset
 from toob.pseudo import labels_to_pseudo, load_website_to_set

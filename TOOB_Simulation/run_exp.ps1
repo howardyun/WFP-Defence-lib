@@ -56,6 +56,9 @@ $AdvDirectionNpz = Join-Path $RunDir "toob_adv_direction.npz"
 
 New-Item -ItemType Directory -Force -Path $RunDir | Out-Null
 
+Write-Host "[0/4] TOOB imports"
+& $PythonExe TOOB_Simulation\EXP\00_check_imports.py
+
 Write-Host "[1/4] Direction sequence -> burst dataset"
 & $PythonExe TOOB_Simulation\EXP\01_make_burst_dataset.py `
     --input $Dataset `

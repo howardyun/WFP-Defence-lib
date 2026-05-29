@@ -2,16 +2,14 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-import sys
 
 import numpy as np
 import torch
 from tqdm import tqdm
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+from _bootstrap import ensure_project_root
 
+ensure_project_root(required_modules=("burst", "data", "generator"))
 from toob.burst import apply_burst_perturbation, burst_to_direction, overhead_ratio
 from toob.data import load_npz_dataset, save_npz_dataset
 from toob.generator import build_generator_from_checkpoint

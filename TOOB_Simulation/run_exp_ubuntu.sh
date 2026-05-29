@@ -107,6 +107,8 @@ ADV_DIRECTION_NPZ="${RUN_DIR}/toob_adv_direction.npz"
 mkdir -p "$RUN_DIR"
 
 echo "[0/4] Python: $("$PYTHON_BIN" -c 'import sys; print(sys.executable)')"
+echo "[0/4] TOOB imports"
+"$PYTHON_BIN" TOOB_Simulation/EXP/00_check_imports.py
 
 echo "[1/4] Direction sequence -> burst dataset"
 "$PYTHON_BIN" TOOB_Simulation/EXP/01_make_burst_dataset.py \

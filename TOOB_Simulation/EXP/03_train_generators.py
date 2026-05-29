@@ -4,15 +4,13 @@ import argparse
 import json
 from dataclasses import asdict
 from pathlib import Path
-import sys
 
 import numpy as np
 import torch
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+from _bootstrap import ensure_project_root
 
+ensure_project_root(required_modules=("data", "detector", "train"))
 from toob.data import load_npz_dataset
 from toob.detector import load_detector
 from toob.train import TrainConfig, train_one_generator
