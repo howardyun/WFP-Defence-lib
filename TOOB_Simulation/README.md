@@ -112,6 +112,23 @@ python TOOB_Simulation/EXP/01_make_burst_dataset.py `
   --max-bursts 2000
 ```
 
+Output:
+
+```text
+TOOB_Simulation/outputs/burst_dataset.npz
+```
+
+This file contains:
+
+```text
+data   - burst sequences converted from the original direction traces
+labels - original website labels, unchanged
+```
+
+`data` is the burst-domain training representation used by the later TOOB
+steps. `labels` still means the real website class, such as `0..94`; this step
+does not create pseudo labels yet.
+
 ## Step 2: Pseudo Labels
 
 Cluster website burst profiles and create pseudo labels:
@@ -128,8 +145,40 @@ python TOOB_Simulation/EXP/02_make_pseudo_labels.py `
   --drop-unmapped
 ```
 
-This step also writes a readable JSON summary with pseudo-label counts,
-website-to-set mapping, cluster sets, and per-sample label assignments.
+Output:
+
+```text
+TOOB_Simulation/outputs/pseudo_labels.npz
+TOOB_Simulation/outputs/pseudo_labels.json
+```
+
+`pseudo_labels.npz` is the file used by later scripts. It contains:
+
+```text
+labels        - original website labels after filtering, still the real labels
+pseudo_labels - cluster IDs assigned to each kept sample
+keep_indices  - row indices kept from burst_dataset.npz
+```
+
+`pseudo_labels.json` is a readable summary for inspection. The important fields
+are:
+
+```text
+website_to_pseudo_label - original website label -> pseudo label
+pseudo_label_to_websites - pseudo label -> grouped website labels
+pseudo_label_counts - number of samples under each pseudo label
+cluster - clustering settings and metadata
+samples - per-sample original label and pseudo label assignment
+```
+
+Conceptually, this step is where the original monitored website labels are
+merged into fewer pseudo-label groups. For example, website labels `0`, `5`, and
+`8` may all map to pseudo label `0`. Later, one generator `G_0` is trained for
+all samples whose pseudo label is `0`.
+
+`--exclude-labels 95` removes the open-world class from pseudo-label clustering.
+The real labels are preserved so the final defended dataset can still be
+evaluated by normal detectors.
 
 ## Step 3: Train Generators With DF
 
@@ -145,6 +194,22 @@ python TOOB_Simulation/EXP/03_train_generators.py `
   --detector-input-length 5000 `
   --output-dir TOOB_Simulation/outputs/generators
 ```
+
+Output:
+
+```text
+TOOB_Simulation/outputs/generators/generator_pseudo_0.pt
+TOOB_Simulation/outputs/generators/generator_pseudo_1.pt
+...
+TOOB_Simulation/outputs/generators/manifest.json
+```
+
+Each `generator_pseudo_*.pt` file is one trained generator `G_c` for a pseudo
+label `c`. The script reads `burst_dataset.npz` for burst inputs and
+`pseudo_labels.npz` to decide which samples belong to each pseudo label.
+
+`manifest.json` records the detector checkpoint, training arguments, and the
+generator files produced during the run.
 
 This DF architecture consumes direction sequences with shape `[N, 1, 5000]`.
 During training, TOOB uses a differentiable soft burst-to-direction projection
@@ -204,4 +269,47 @@ python TOOB_Simulation/EXP/04_generate_dataset.py `
   --output-kind direction `
   --max-trace-len 5000 `
   --round
+```
+
+Output:
+
+```text
+TOOB_Simulation/outputs/toob_adv_direction.npz
+```
+
+For `--output-kind direction`, the output contains:
+
+```text
+data          - defended direction sequences, ready for detector evaluation
+labels        - original website labels, unchanged
+pseudo_labels - pseudo label used to choose the generator
+overhead      - perturbation overhead for each sample
+```
+
+For `--output-kind burst`, `data` and `burst_data` are defended burst data
+instead of direction sequences. For `--output-kind both`, the file stores
+`burst_data` and `direction_data`; `data` points to the burst representation.
+
+This is the final simulation dataset. Other detectors should evaluate against
+`labels`, not `pseudo_labels`. The pseudo labels only explain which cluster-wise
+generator produced the perturbation.
+
+## Runner Output Layout
+
+The one-command runners use the same four steps and write to a run directory:
+
+```text
+smoke -> TOOB_Simulation/outputs_smoke/
+one   -> TOOB_Simulation/outputs_one/
+full  -> TOOB_Simulation/outputs/
+```
+
+Inside a run directory, the main artifacts are:
+
+```text
+burst_dataset.npz          - Step 1 burst representation
+pseudo_labels.npz          - Step 2 sample-level pseudo labels for training
+pseudo_labels.json         - Step 2 readable cluster mapping and summary
+generators/                - Step 3 trained G_c checkpoints
+toob_adv_direction.npz     - Step 4 final defended direction dataset
 ```
