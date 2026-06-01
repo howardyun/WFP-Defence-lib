@@ -37,6 +37,9 @@ SET_SIZE="${SET_SIZE:-30}"
 CLUSTER_ROUNDS="${CLUSTER_ROUNDS:-1}"
 PROFILE_METHOD="${PROFILE_METHOD:-super}"
 EXCLUDE_LABELS="${EXCLUDE_LABELS:-95}"
+RUN_EVAL="${RUN_EVAL:-1}"
+EVAL_METRICS="${EVAL_METRICS:-accuracy precision recall f1}"
+EVAL_AVERAGE="${EVAL_AVERAGE:-macro}"
 
 SMOKE_LIMIT="${SMOKE_LIMIT:-200}"
 SMOKE_EPOCHS="${SMOKE_EPOCHS:-1}"
@@ -75,6 +78,7 @@ else
   echo "Environment overrides:"
   echo "  PYTHON_BIN DATASET DF_BUILDER DF_CHECKPOINT OUT_DIR"
   echo "  SET_SIZE CLUSTER_ROUNDS PROFILE_METHOD EXCLUDE_LABELS"
+  echo "  RUN_EVAL EVAL_METRICS EVAL_AVERAGE"
   echo "  FULL_EPOCHS FULL_BATCH_SIZE FULL_NOISE_DIM"
   echo "  SMOKE_LIMIT SMOKE_EPOCHS SMOKE_BATCH_SIZE SMOKE_NOISE_DIM"
   echo "  PSEUDO_LABEL for mode 'one'"
@@ -86,13 +90,14 @@ PSEUDO_NPZ="${RUN_DIR}/pseudo_labels.npz"
 PSEUDO_JSON="${RUN_DIR}/pseudo_labels.json"
 GENERATOR_DIR="${RUN_DIR}/generators"
 ADV_DIRECTION_NPZ="${RUN_DIR}/toob_adv_direction.npz"
+EVAL_JSON="${RUN_DIR}/defense_eval_metrics.json"
 
 mkdir -p "$RUN_DIR"
 
-echo "[0/4] TOOB imports"
+echo "[0/5] TOOB imports"
 "$PYTHON_EXE" TOOB_Simulation/EXP/00_check_imports.py
 
-echo "[1/4] Direction sequence -> burst dataset"
+echo "[1/5] Direction sequence -> burst dataset"
 "$PYTHON_EXE" TOOB_Simulation/EXP/01_make_burst_dataset.py \
   --input "$DATASET" \
   --output "$BURST_NPZ" \
@@ -110,7 +115,7 @@ if [ -n "$EXCLUDE_LABELS" ]; then
   EXCLUDE_ARGS="--exclude-labels ${EXCLUDE_LABELS}"
 fi
 
-echo "[2/4] Cluster burst profiles -> pseudo labels"
+echo "[2/5] Cluster burst profiles -> pseudo labels"
 "$PYTHON_EXE" TOOB_Simulation/EXP/02_make_pseudo_labels.py \
   --labels-npz "$BURST_NPZ" \
   --output "$PSEUDO_NPZ" \
@@ -122,7 +127,7 @@ echo "[2/4] Cluster burst profiles -> pseudo labels"
   $MAPPING_ARGS \
   $EXCLUDE_ARGS
 
-echo "[3/4] Train cluster-wise burst generators"
+echo "[3/5] Train cluster-wise burst generators"
 "$PYTHON_EXE" TOOB_Simulation/EXP/03_train_generators.py \
   --burst-npz "$BURST_NPZ" \
   --pseudo-npz "$PSEUDO_NPZ" \
@@ -140,7 +145,7 @@ echo "[3/4] Train cluster-wise burst generators"
   --output-dir "$GENERATOR_DIR" \
   $PSEUDO_ARGS
 
-echo "[4/4] Export defended direction dataset"
+echo "[4/5] Export defended direction dataset"
 "$PYTHON_EXE" TOOB_Simulation/EXP/04_generate_dataset.py \
   --burst-npz "$BURST_NPZ" \
   --pseudo-npz "$PSEUDO_NPZ" \
@@ -151,5 +156,26 @@ echo "[4/4] Export defended direction dataset"
   --batch-size 256 \
   --round
 
+if [ "$RUN_EVAL" = "1" ]; then
+  echo "[5/5] Evaluate defended dataset"
+  "$PYTHON_EXE" TOOB_Simulation/EXP/05_evaluate_defense.py \
+    --input-npz "$ADV_DIRECTION_NPZ" \
+    --input-kind direction \
+    --data-key data \
+    --labels-key labels \
+    --detector-builder "$DF_BUILDER" \
+    --detector-checkpoint "$DF_CHECKPOINT" \
+    --num-classes "$NUM_CLASSES" \
+    --detector-input-kind direction \
+    --detector-input-layout ncl \
+    --max-trace-len "$TRACE_LEN" \
+    --metrics $EVAL_METRICS \
+    --average "$EVAL_AVERAGE" \
+    --output-json "$EVAL_JSON"
+fi
+
 echo "Done."
 echo "Output dataset: $ADV_DIRECTION_NPZ"
+if [ "$RUN_EVAL" = "1" ]; then
+  echo "Evaluation metrics: $EVAL_JSON"
+fi

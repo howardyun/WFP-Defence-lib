@@ -1,5 +1,6 @@
 outputs/
 outputs_smoke/
+outputs*/
 data/
 checkpoints/
 *.zip

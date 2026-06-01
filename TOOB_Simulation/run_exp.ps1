@@ -23,6 +23,9 @@ $SetSize = if ($env:SET_SIZE) { $env:SET_SIZE } else { "30" }
 $ClusterRounds = if ($env:CLUSTER_ROUNDS) { $env:CLUSTER_ROUNDS } else { "1" }
 $ProfileMethod = if ($env:PROFILE_METHOD) { $env:PROFILE_METHOD } else { "super" }
 $ExcludeLabels = if ($env:EXCLUDE_LABELS) { $env:EXCLUDE_LABELS } else { "95" }
+$RunEval = if ($env:RUN_EVAL) { $env:RUN_EVAL } else { "1" }
+$EvalMetrics = if ($env:EVAL_METRICS) { $env:EVAL_METRICS } else { "accuracy precision recall f1" }
+$EvalAverage = if ($env:EVAL_AVERAGE) { $env:EVAL_AVERAGE } else { "macro" }
 
 if ($Mode -eq "smoke") {
     $RunDir = "${OutDir}_smoke"
@@ -53,13 +56,14 @@ $PseudoNpz = Join-Path $RunDir "pseudo_labels.npz"
 $PseudoJson = Join-Path $RunDir "pseudo_labels.json"
 $GeneratorDir = Join-Path $RunDir "generators"
 $AdvDirectionNpz = Join-Path $RunDir "toob_adv_direction.npz"
+$EvalJson = Join-Path $RunDir "defense_eval_metrics.json"
 
 New-Item -ItemType Directory -Force -Path $RunDir | Out-Null
 
-Write-Host "[0/4] TOOB imports"
+Write-Host "[0/5] TOOB imports"
 & $PythonExe TOOB_Simulation\EXP\00_check_imports.py
 
-Write-Host "[1/4] Direction sequence -> burst dataset"
+Write-Host "[1/5] Direction sequence -> burst dataset"
 & $PythonExe TOOB_Simulation\EXP\01_make_burst_dataset.py `
     --input $Dataset `
     --output $BurstNpz `
@@ -68,7 +72,7 @@ Write-Host "[1/4] Direction sequence -> burst dataset"
     --max-bursts $MaxBursts `
     @LimitArgs
 
-Write-Host "[2/4] Cluster burst profiles -> pseudo labels"
+Write-Host "[2/5] Cluster burst profiles -> pseudo labels"
 $MappingArgs = @()
 if ($Mapping) {
     $MappingArgs = @("--mapping", $Mapping)
@@ -88,7 +92,7 @@ if ($ExcludeLabels) {
     @MappingArgs `
     @ExcludeArgs
 
-Write-Host "[3/4] Train cluster-wise burst generators"
+Write-Host "[3/5] Train cluster-wise burst generators"
 & $PythonExe TOOB_Simulation\EXP\03_train_generators.py `
     --burst-npz $BurstNpz `
     --pseudo-npz $PseudoNpz `
@@ -106,7 +110,7 @@ Write-Host "[3/4] Train cluster-wise burst generators"
     --output-dir $GeneratorDir `
     @PseudoArgs
 
-Write-Host "[4/4] Export defended direction dataset"
+Write-Host "[4/5] Export defended direction dataset"
 & $PythonExe TOOB_Simulation\EXP\04_generate_dataset.py `
     --burst-npz $BurstNpz `
     --pseudo-npz $PseudoNpz `
@@ -117,5 +121,27 @@ Write-Host "[4/4] Export defended direction dataset"
     --batch-size 256 `
     --round
 
+if ($RunEval -eq "1") {
+    Write-Host "[5/5] Evaluate defended dataset"
+    $EvalMetricArgs = $EvalMetrics.Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries)
+    & $PythonExe TOOB_Simulation\EXP\05_evaluate_defense.py `
+        --input-npz $AdvDirectionNpz `
+        --input-kind direction `
+        --data-key data `
+        --labels-key labels `
+        --detector-builder $DfBuilder `
+        --detector-checkpoint $DfCheckpoint `
+        --num-classes $NumClasses `
+        --detector-input-kind direction `
+        --detector-input-layout ncl `
+        --max-trace-len $TraceLen `
+        --metrics @EvalMetricArgs `
+        --average $EvalAverage `
+        --output-json $EvalJson
+}
+
 Write-Host "Done."
 Write-Host "Output dataset: $AdvDirectionNpz"
+if ($RunEval -eq "1") {
+    Write-Host "Evaluation metrics: $EvalJson"
+}
