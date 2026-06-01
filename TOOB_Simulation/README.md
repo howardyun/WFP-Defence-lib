@@ -38,6 +38,41 @@ labels - 整数标签或 one-hot 标签
 TOOB_Simulation/data/raw/test.npz
 ```
 
+## 训练集和验证集
+
+现在 runner 支持显式指定训练集和验证集：
+
+```bash
+TRAIN_DATASET=TOOB_Simulation/data/raw/train.npz \
+VALID_DATASET=TOOB_Simulation/data/raw/valid.npz \
+bash TOOB_Simulation/run_exp_ubuntu.sh full
+```
+
+训练集负责三件事：
+
+```text
+1. 生成 train burst 数据
+2. 根据 train burst profile 聚类得到 website_to_pseudo_label
+3. 训练每个伪标签对应的生成器 G_c
+```
+
+验证集负责两件事：
+
+```text
+1. 使用训练集得到的 website_to_pseudo_label 映射到伪标签
+2. 使用训练好的 G_c 生成 defended valid 样本，并在 valid 样本上评测检测器
+```
+
+也就是说，指定 `VALID_DATASET` 后，最终用于评测的防御样本来自 valid 集，
+不是训练集。输出文件会变成：
+
+```text
+TOOB_Simulation/outputs/toob_valid_adv_direction.npz
+```
+
+如果没有指定 `VALID_DATASET`，runner 会保持旧行为：直接在训练输入对应的
+defended dataset 上做评测。
+
 你的 DF 模型通过 detector adapter 加载。默认模型结构和 checkpoint 是：
 
 ```text
@@ -91,6 +126,8 @@ D:\Git\bin\sh.exe TOOB_Simulation/run_exp.sh one
 常用环境变量：
 
 ```powershell
+$env:TRAIN_DATASET="TOOB_Simulation\data\raw\train.npz"
+$env:VALID_DATASET="TOOB_Simulation\data\raw\valid.npz"
 $env:FULL_EPOCHS="50"
 $env:FULL_BATCH_SIZE="16"
 $env:OUT_DIR="TOOB_Simulation/outputs_v1"
@@ -327,6 +364,20 @@ python TOOB_Simulation/EXP/04_generate_dataset.py `
 TOOB_Simulation/outputs/toob_adv_direction.npz
 ```
 
+如果 runner 指定了 `VALID_DATASET`，Step 4 会先额外生成：
+
+```text
+TOOB_Simulation/outputs/valid_burst_dataset.npz
+TOOB_Simulation/outputs/valid_pseudo_labels.npz
+TOOB_Simulation/outputs/valid_pseudo_labels.json
+```
+
+然后使用训练好的 `generators/` 给 valid 样本加防御，最终输出：
+
+```text
+TOOB_Simulation/outputs/toob_valid_adv_direction.npz
+```
+
 当 `--output-kind direction` 时，主要字段是：
 
 ```text
@@ -360,6 +411,12 @@ runner 默认会在 Step 4 后自动评测生成好的 defended direction 数据
 
 ```text
 TOOB_Simulation/outputs/toob_adv_direction.npz
+```
+
+如果指定了 `VALID_DATASET`，runner 会自动改为评测：
+
+```text
+TOOB_Simulation/outputs/toob_valid_adv_direction.npz
 ```
 
 单独评测已经生成好的防御数据集：
@@ -465,6 +522,7 @@ pseudo_labels.npz          - Step 2 得到的样本级伪标签
 pseudo_labels.json         - Step 2 得到的可读聚类映射
 generators/                - Step 3 训练得到的 G_c checkpoints
 toob_adv_direction.npz     - Step 4 得到的最终 direction 防御数据集
+toob_valid_adv_direction.npz - 指定 VALID_DATASET 时的 valid 防御数据集
 defense_eval_metrics.json  - Step 5 得到的检测器评测结果
 ```
 

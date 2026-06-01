@@ -12,6 +12,13 @@ PYTHON_BIN="${PYTHON_BIN:-python3}"
 DATASET="${DATASET:-TOOB_Simulation/data/raw/test.npz}"
 DATA_KEY="${DATA_KEY:-X}"
 LABELS_KEY="${LABELS_KEY:-y}"
+TRAIN_DATASET="${TRAIN_DATASET:-$DATASET}"
+TRAIN_DATA_KEY="${TRAIN_DATA_KEY:-$DATA_KEY}"
+TRAIN_LABELS_KEY="${TRAIN_LABELS_KEY:-$LABELS_KEY}"
+VALID_DATASET="${VALID_DATASET:-}"
+VALID_DATA_KEY="${VALID_DATA_KEY:-$DATA_KEY}"
+VALID_LABELS_KEY="${VALID_LABELS_KEY:-$LABELS_KEY}"
+VALID_LIMIT="${VALID_LIMIT:-}"
 MAPPING="${MAPPING:-}"
 DF_BUILDER="${DF_BUILDER:-TOOB_Simulation/checkpoints/df/DF.py:DF}"
 DF_CHECKPOINT="${DF_CHECKPOINT:-TOOB_Simulation/checkpoints/df/max_f1.pth}"
@@ -59,6 +66,9 @@ PY
 if [ "$MODE" = "smoke" ]; then
   RUN_DIR="${OUT_DIR}_smoke"
   LIMIT_ARGS=(--limit "$SMOKE_LIMIT")
+  if [ -n "$VALID_DATASET" ] && [ -z "$VALID_LIMIT" ]; then
+    VALID_LIMIT="$SMOKE_LIMIT"
+  fi
   EPOCHS="$SMOKE_EPOCHS"
   BATCH_SIZE="$SMOKE_BATCH_SIZE"
   NOISE_DIM="$SMOKE_NOISE_DIM"
@@ -82,7 +92,8 @@ else
   echo "Usage: bash TOOB_Simulation/run_exp_ubuntu.sh [smoke|one|full]"
   echo ""
   echo "Environment overrides:"
-  echo "  PYTHON_BIN DATASET DF_BUILDER DF_CHECKPOINT OUT_DIR"
+  echo "  PYTHON_BIN DATASET TRAIN_DATASET VALID_DATASET DF_BUILDER DF_CHECKPOINT OUT_DIR"
+  echo "  DATA_KEY LABELS_KEY TRAIN_DATA_KEY TRAIN_LABELS_KEY VALID_DATA_KEY VALID_LABELS_KEY VALID_LIMIT"
   echo "  SET_SIZE CLUSTER_ROUNDS PROFILE_METHOD EXCLUDE_LABELS"
   echo "  RUN_EVAL EVAL_METRICS EVAL_AVERAGE"
   echo "  FULL_EPOCHS FULL_BATCH_SIZE FULL_NOISE_DIM"
@@ -91,7 +102,15 @@ else
   exit 2
 fi
 
-require_file "$DATASET"
+VALID_LIMIT_ARGS=()
+if [ -n "$VALID_LIMIT" ]; then
+  VALID_LIMIT_ARGS=(--limit "$VALID_LIMIT")
+fi
+
+require_file "$TRAIN_DATASET"
+if [ -n "$VALID_DATASET" ]; then
+  require_file "$VALID_DATASET"
+fi
 if [ -n "$MAPPING" ]; then
   require_file "$MAPPING"
   MAPPING_ARGS=(--mapping "$MAPPING")
@@ -105,8 +124,15 @@ require_python_deps
 BURST_NPZ="${RUN_DIR}/burst_dataset.npz"
 PSEUDO_NPZ="${RUN_DIR}/pseudo_labels.npz"
 PSEUDO_JSON="${RUN_DIR}/pseudo_labels.json"
+VALID_BURST_NPZ="${RUN_DIR}/valid_burst_dataset.npz"
+VALID_PSEUDO_NPZ="${RUN_DIR}/valid_pseudo_labels.npz"
+VALID_PSEUDO_JSON="${RUN_DIR}/valid_pseudo_labels.json"
 GENERATOR_DIR="${RUN_DIR}/generators"
-ADV_DIRECTION_NPZ="${RUN_DIR}/toob_adv_direction.npz"
+if [ -n "$VALID_DATASET" ]; then
+  ADV_DIRECTION_NPZ="${RUN_DIR}/toob_valid_adv_direction.npz"
+else
+  ADV_DIRECTION_NPZ="${RUN_DIR}/toob_adv_direction.npz"
+fi
 EVAL_JSON="${RUN_DIR}/defense_eval_metrics.json"
 
 mkdir -p "$RUN_DIR"
@@ -115,12 +141,12 @@ echo "[0/5] Python: $("$PYTHON_BIN" -c 'import sys; print(sys.executable)')"
 echo "[0/5] TOOB imports"
 "$PYTHON_BIN" TOOB_Simulation/EXP/00_check_imports.py
 
-echo "[1/5] Direction sequence -> burst dataset"
+echo "[1/5] Train direction sequence -> burst dataset"
 "$PYTHON_BIN" TOOB_Simulation/EXP/01_make_burst_dataset.py \
-  --input "$DATASET" \
+  --input "$TRAIN_DATASET" \
   --output "$BURST_NPZ" \
-  --data-key "$DATA_KEY" \
-  --labels-key "$LABELS_KEY" \
+  --data-key "$TRAIN_DATA_KEY" \
+  --labels-key "$TRAIN_LABELS_KEY" \
   --max-bursts "$MAX_BURSTS" \
   "${LIMIT_ARGS[@]}"
 
@@ -160,10 +186,34 @@ echo "[3/5] Train cluster-wise burst generators"
   --output-dir "$GENERATOR_DIR" \
   "${PSEUDO_ARGS[@]}"
 
+DEFENSE_BURST_NPZ="$BURST_NPZ"
+DEFENSE_PSEUDO_NPZ="$PSEUDO_NPZ"
+if [ -n "$VALID_DATASET" ]; then
+  echo "[4/5] Valid direction sequence -> burst dataset"
+  "$PYTHON_BIN" TOOB_Simulation/EXP/01_make_burst_dataset.py \
+    --input "$VALID_DATASET" \
+    --output "$VALID_BURST_NPZ" \
+    --data-key "$VALID_DATA_KEY" \
+    --labels-key "$VALID_LABELS_KEY" \
+    --max-bursts "$MAX_BURSTS" \
+    "${VALID_LIMIT_ARGS[@]}"
+
+  echo "[4/5] Map valid labels with train pseudo-label mapping"
+  "$PYTHON_BIN" TOOB_Simulation/EXP/02_make_pseudo_labels.py \
+    --labels-npz "$VALID_BURST_NPZ" \
+    --mapping "$PSEUDO_JSON" \
+    --output "$VALID_PSEUDO_NPZ" \
+    --json-output "$VALID_PSEUDO_JSON" \
+    --drop-unmapped
+
+  DEFENSE_BURST_NPZ="$VALID_BURST_NPZ"
+  DEFENSE_PSEUDO_NPZ="$VALID_PSEUDO_NPZ"
+fi
+
 echo "[4/5] Export defended direction dataset"
 "$PYTHON_BIN" TOOB_Simulation/EXP/04_generate_dataset.py \
-  --burst-npz "$BURST_NPZ" \
-  --pseudo-npz "$PSEUDO_NPZ" \
+  --burst-npz "$DEFENSE_BURST_NPZ" \
+  --pseudo-npz "$DEFENSE_PSEUDO_NPZ" \
   --generator-dir "$GENERATOR_DIR" \
   --output "$ADV_DIRECTION_NPZ" \
   --output-kind direction \
@@ -194,6 +244,9 @@ fi
 echo "Done."
 echo "Output dataset: $ADV_DIRECTION_NPZ"
 echo "Pseudo-label JSON: $PSEUDO_JSON"
+if [ -n "$VALID_DATASET" ]; then
+  echo "Valid pseudo-label JSON: $VALID_PSEUDO_JSON"
+fi
 if [ "$RUN_EVAL" = "1" ]; then
   echo "Evaluation metrics: $EVAL_JSON"
 fi

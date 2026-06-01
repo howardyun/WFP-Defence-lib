@@ -9,6 +9,13 @@ $PythonExe = if ($env:PYTHON_BIN) { $env:PYTHON_BIN } else { "D:\Anaconda\envs\m
 $Dataset = if ($env:DATASET) { $env:DATASET } else { "TOOB_Simulation\data\raw\test.npz" }
 $DataKey = if ($env:DATA_KEY) { $env:DATA_KEY } else { "X" }
 $LabelsKey = if ($env:LABELS_KEY) { $env:LABELS_KEY } else { "y" }
+$TrainDataset = if ($env:TRAIN_DATASET) { $env:TRAIN_DATASET } else { $Dataset }
+$TrainDataKey = if ($env:TRAIN_DATA_KEY) { $env:TRAIN_DATA_KEY } else { $DataKey }
+$TrainLabelsKey = if ($env:TRAIN_LABELS_KEY) { $env:TRAIN_LABELS_KEY } else { $LabelsKey }
+$ValidDataset = if ($env:VALID_DATASET) { $env:VALID_DATASET } else { "" }
+$ValidDataKey = if ($env:VALID_DATA_KEY) { $env:VALID_DATA_KEY } else { $DataKey }
+$ValidLabelsKey = if ($env:VALID_LABELS_KEY) { $env:VALID_LABELS_KEY } else { $LabelsKey }
+$ValidLimit = if ($env:VALID_LIMIT) { $env:VALID_LIMIT } else { "" }
 $Mapping = if ($env:MAPPING) { $env:MAPPING } else { "" }
 $DfBuilder = if ($env:DF_BUILDER) { $env:DF_BUILDER } else { "TOOB_Simulation\checkpoints\df\DF.py:DF" }
 $DfCheckpoint = if ($env:DF_CHECKPOINT) { $env:DF_CHECKPOINT } else { "TOOB_Simulation\checkpoints\df\max_f1.pth" }
@@ -29,7 +36,11 @@ $EvalAverage = if ($env:EVAL_AVERAGE) { $env:EVAL_AVERAGE } else { "macro" }
 
 if ($Mode -eq "smoke") {
     $RunDir = "${OutDir}_smoke"
-    $LimitArgs = @("--limit", $(if ($env:SMOKE_LIMIT) { $env:SMOKE_LIMIT } else { "200" }))
+    $SmokeLimitValue = if ($env:SMOKE_LIMIT) { $env:SMOKE_LIMIT } else { "200" }
+    $LimitArgs = @("--limit", $SmokeLimitValue)
+    if ($ValidDataset -and -not $ValidLimit) {
+        $ValidLimit = $SmokeLimitValue
+    }
     $Epochs = if ($env:SMOKE_EPOCHS) { $env:SMOKE_EPOCHS } else { "1" }
     $BatchSize = if ($env:SMOKE_BATCH_SIZE) { $env:SMOKE_BATCH_SIZE } else { "4" }
     $NoiseDim = if ($env:SMOKE_NOISE_DIM) { $env:SMOKE_NOISE_DIM } else { "64" }
@@ -51,11 +62,23 @@ if ($Mode -eq "smoke") {
     $PseudoArgs = @("--pseudo-labels", $PseudoLabel)
 }
 
+$ValidLimitArgs = @()
+if ($ValidLimit) {
+    $ValidLimitArgs = @("--limit", $ValidLimit)
+}
+
 $BurstNpz = Join-Path $RunDir "burst_dataset.npz"
 $PseudoNpz = Join-Path $RunDir "pseudo_labels.npz"
 $PseudoJson = Join-Path $RunDir "pseudo_labels.json"
+$ValidBurstNpz = Join-Path $RunDir "valid_burst_dataset.npz"
+$ValidPseudoNpz = Join-Path $RunDir "valid_pseudo_labels.npz"
+$ValidPseudoJson = Join-Path $RunDir "valid_pseudo_labels.json"
 $GeneratorDir = Join-Path $RunDir "generators"
-$AdvDirectionNpz = Join-Path $RunDir "toob_adv_direction.npz"
+if ($ValidDataset) {
+    $AdvDirectionNpz = Join-Path $RunDir "toob_valid_adv_direction.npz"
+} else {
+    $AdvDirectionNpz = Join-Path $RunDir "toob_adv_direction.npz"
+}
 $EvalJson = Join-Path $RunDir "defense_eval_metrics.json"
 
 New-Item -ItemType Directory -Force -Path $RunDir | Out-Null
@@ -63,12 +86,12 @@ New-Item -ItemType Directory -Force -Path $RunDir | Out-Null
 Write-Host "[0/5] TOOB imports"
 & $PythonExe TOOB_Simulation\EXP\00_check_imports.py
 
-Write-Host "[1/5] Direction sequence -> burst dataset"
+Write-Host "[1/5] Train direction sequence -> burst dataset"
 & $PythonExe TOOB_Simulation\EXP\01_make_burst_dataset.py `
-    --input $Dataset `
+    --input $TrainDataset `
     --output $BurstNpz `
-    --data-key $DataKey `
-    --labels-key $LabelsKey `
+    --data-key $TrainDataKey `
+    --labels-key $TrainLabelsKey `
     --max-bursts $MaxBursts `
     @LimitArgs
 
@@ -110,10 +133,34 @@ Write-Host "[3/5] Train cluster-wise burst generators"
     --output-dir $GeneratorDir `
     @PseudoArgs
 
+$DefenseBurstNpz = $BurstNpz
+$DefensePseudoNpz = $PseudoNpz
+if ($ValidDataset) {
+    Write-Host "[4/5] Valid direction sequence -> burst dataset"
+    & $PythonExe TOOB_Simulation\EXP\01_make_burst_dataset.py `
+        --input $ValidDataset `
+        --output $ValidBurstNpz `
+        --data-key $ValidDataKey `
+        --labels-key $ValidLabelsKey `
+        --max-bursts $MaxBursts `
+        @ValidLimitArgs
+
+    Write-Host "[4/5] Map valid labels with train pseudo-label mapping"
+    & $PythonExe TOOB_Simulation\EXP\02_make_pseudo_labels.py `
+        --labels-npz $ValidBurstNpz `
+        --mapping $PseudoJson `
+        --output $ValidPseudoNpz `
+        --json-output $ValidPseudoJson `
+        --drop-unmapped
+
+    $DefenseBurstNpz = $ValidBurstNpz
+    $DefensePseudoNpz = $ValidPseudoNpz
+}
+
 Write-Host "[4/5] Export defended direction dataset"
 & $PythonExe TOOB_Simulation\EXP\04_generate_dataset.py `
-    --burst-npz $BurstNpz `
-    --pseudo-npz $PseudoNpz `
+    --burst-npz $DefenseBurstNpz `
+    --pseudo-npz $DefensePseudoNpz `
     --generator-dir $GeneratorDir `
     --output $AdvDirectionNpz `
     --output-kind direction `
@@ -142,6 +189,9 @@ if ($RunEval -eq "1") {
 
 Write-Host "Done."
 Write-Host "Output dataset: $AdvDirectionNpz"
+if ($ValidDataset) {
+    Write-Host "Valid pseudo-label JSON: $ValidPseudoJson"
+}
 if ($RunEval -eq "1") {
     Write-Host "Evaluation metrics: $EvalJson"
 }
