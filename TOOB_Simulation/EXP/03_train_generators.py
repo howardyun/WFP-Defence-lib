@@ -37,6 +37,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--noise-dim", type=int, default=256)
     parser.add_argument("--overhead-threshold", type=float, default=0.22)
     parser.add_argument("--lambda-overhead", type=float, default=1.0)
+    parser.add_argument("--overhead-loss", choices=("hinge", "target_l1", "target_l2", "band"), default="hinge")
+    parser.add_argument("--overhead-tolerance", type=float, default=0.0)
     parser.add_argument("--lambda-tv", type=float, default=0.001)
     parser.add_argument("--attack-loss", choices=("true_prob", "true_logit", "negative_ce"), default="true_prob")
     parser.add_argument("--seed", type=int, default=1)
@@ -73,6 +75,8 @@ def main() -> int:
         noise_dim=args.noise_dim,
         overhead_threshold=args.overhead_threshold,
         lambda_overhead=args.lambda_overhead,
+        overhead_loss=args.overhead_loss,
+        overhead_tolerance=args.overhead_tolerance,
         lambda_tv=args.lambda_tv,
         attack_loss=args.attack_loss,
         detector_input_kind=args.detector_input_kind,

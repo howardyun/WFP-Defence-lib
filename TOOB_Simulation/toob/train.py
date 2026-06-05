@@ -13,7 +13,7 @@ from .burst import apply_burst_perturbation, overhead_ratio, soft_burst_to_direc
 from .data import BurstDataset, select_by_pseudo
 from .detector import format_detector_input
 from .generator import BurstGenerator, GeneratorConfig
-from .losses import overhead_hinge_loss, total_variation_loss, untargeted_attack_loss
+from .losses import overhead_budget_loss, total_variation_loss, untargeted_attack_loss
 
 
 @dataclass
@@ -24,6 +24,8 @@ class TrainConfig:
     noise_dim: int = 256
     overhead_threshold: float = 0.22
     lambda_overhead: float = 1.0
+    overhead_loss: str = "hinge"
+    overhead_tolerance: float = 0.0
     lambda_tv: float = 0.001
     attack_loss: str = "true_prob"
     detector_input_kind: str = "direction"
@@ -89,7 +91,13 @@ def train_one_generator(
             logits = detector(detector_x)
 
             loss_attack = untargeted_attack_loss(logits, y, mode=config.attack_loss)
-            loss_overhead = overhead_hinge_loss(x, adv, config.overhead_threshold)
+            loss_overhead = overhead_budget_loss(
+                x,
+                adv,
+                config.overhead_threshold,
+                mode=config.overhead_loss,
+                tolerance=config.overhead_tolerance,
+            )
             loss_tv = total_variation_loss(delta)
             loss = loss_attack + config.lambda_overhead * loss_overhead + config.lambda_tv * loss_tv
 

@@ -35,6 +35,8 @@ VALID_LABELS_KEY="${VALID_LABELS_KEY:-$LABELS_KEY}"
 VALID_LIMIT="${VALID_LIMIT:-}"
 # Optional precomputed website-to-pseudo-label mapping JSON/NPY.
 MAPPING="${MAPPING:-}"
+# Reuse existing burst/pseudo-label intermediate files when they already exist.
+REUSE_INTERMEDIATES="${REUSE_INTERMEDIATES:-1}"
 # Detector model builder in file.py:function or module:function format.
 DF_BUILDER="${DF_BUILDER:-TOOB_Simulation/checkpoints/df/DF.py:DF}"
 # Detector checkpoint attacked during generator training and used for evaluation.
@@ -70,13 +72,17 @@ EVAL_AVERAGE="${EVAL_AVERAGE:-macro}"
 # Generator optimizer learning rate.
 LR="${LR:-1e-4}"
 # Per-sample overhead budget where hinge penalty starts; raise this if you can spend more bandwidth.
-OVERHEAD_THRESHOLD="${OVERHEAD_THRESHOLD:-0.30}"
+OVERHEAD_THRESHOLD="${OVERHEAD_THRESHOLD:-0.22}"
 # Weight of the overhead penalty; lower values let the attack spend bandwidth more freely.
-LAMBDA_OVERHEAD="${LAMBDA_OVERHEAD:-0.5}"
+LAMBDA_OVERHEAD="${LAMBDA_OVERHEAD:-1.0}"
+# Bandwidth loss mode: hinge keeps overhead under a cap; target_l1/target_l2 fit a target budget.
+OVERHEAD_LOSS="${OVERHEAD_LOSS:-hinge}"
+# Allowed +/- band around OVERHEAD_THRESHOLD when OVERHEAD_LOSS=band.
+OVERHEAD_TOLERANCE="${OVERHEAD_TOLERANCE:-0.02}"
 # Weight of total-variation smoothing on generated burst padding.
 LAMBDA_TV="${LAMBDA_TV:-0.001}"
 # Generator attack objective: true_prob, true_logit, or negative_ce.
-ATTACK_LOSS="${ATTACK_LOSS:-true_logit}"
+ATTACK_LOSS="${ATTACK_LOSS:-true_prob}"
 
 # Smoke-mode sample limit.
 SMOKE_LIMIT="${SMOKE_LIMIT:-200}"
@@ -162,8 +168,9 @@ else
   echo "Environment overrides:"
   echo "  PYTHON_BIN DATASET TRAIN_DATASET VALID_DATASET DF_BUILDER DF_CHECKPOINT OUT_DIR"
   echo "  DATA_KEY LABELS_KEY TRAIN_DATA_KEY TRAIN_LABELS_KEY VALID_DATA_KEY VALID_LABELS_KEY VALID_LIMIT"
+  echo "  BURST_NPZ PSEUDO_NPZ PSEUDO_JSON VALID_BURST_NPZ VALID_PSEUDO_NPZ VALID_PSEUDO_JSON REUSE_INTERMEDIATES"
   echo "  SET_SIZE CLUSTER_ROUNDS PROFILE_METHOD EXCLUDE_LABELS"
-  echo "  LR OVERHEAD_THRESHOLD LAMBDA_OVERHEAD LAMBDA_TV ATTACK_LOSS"
+  echo "  LR OVERHEAD_THRESHOLD LAMBDA_OVERHEAD OVERHEAD_LOSS OVERHEAD_TOLERANCE LAMBDA_TV ATTACK_LOSS"
   echo "  RUN_EVAL EVAL_METRICS EVAL_AVERAGE"
   echo "  FULL_EPOCHS FULL_BATCH_SIZE FULL_NOISE_DIM"
   echo "  SMOKE_LIMIT SMOKE_EPOCHS SMOKE_BATCH_SIZE SMOKE_NOISE_DIM"
@@ -194,17 +201,17 @@ require_file "$DF_CHECKPOINT"
 require_python_deps
 
 # Train burst dataset path produced by Step 1.
-BURST_NPZ="${RUN_DIR}/burst_dataset.npz"
+BURST_NPZ="${BURST_NPZ:-${RUN_DIR}/burst_dataset.npz}"
 # Train pseudo-label NPZ produced by Step 2.
-PSEUDO_NPZ="${RUN_DIR}/pseudo_labels.npz"
+PSEUDO_NPZ="${PSEUDO_NPZ:-${RUN_DIR}/pseudo_labels.npz}"
 # Human-readable train pseudo-label mapping produced by Step 2.
-PSEUDO_JSON="${RUN_DIR}/pseudo_labels.json"
+PSEUDO_JSON="${PSEUDO_JSON:-${RUN_DIR}/pseudo_labels.json}"
 # Validation burst dataset path produced when VALID_DATASET is set.
-VALID_BURST_NPZ="${RUN_DIR}/valid_burst_dataset.npz"
+VALID_BURST_NPZ="${VALID_BURST_NPZ:-${RUN_DIR}/valid_burst_dataset.npz}"
 # Validation pseudo-label NPZ produced when VALID_DATASET is set.
-VALID_PSEUDO_NPZ="${RUN_DIR}/valid_pseudo_labels.npz"
+VALID_PSEUDO_NPZ="${VALID_PSEUDO_NPZ:-${RUN_DIR}/valid_pseudo_labels.npz}"
 # Human-readable validation pseudo-label mapping produced when VALID_DATASET is set.
-VALID_PSEUDO_JSON="${RUN_DIR}/valid_pseudo_labels.json"
+VALID_PSEUDO_JSON="${VALID_PSEUDO_JSON:-${RUN_DIR}/valid_pseudo_labels.json}"
 # Directory containing generator_pseudo_*.pt checkpoints.
 GENERATOR_DIR="${RUN_DIR}/generators"
 if [ -n "$VALID_DATASET" ]; then
@@ -224,13 +231,17 @@ echo "[0/5] TOOB imports"
 "$PYTHON_BIN" TOOB_Simulation/EXP/00_check_imports.py
 
 echo "[1/5] Train direction sequence -> burst dataset"
-"$PYTHON_BIN" TOOB_Simulation/EXP/01_make_burst_dataset.py \
-  --input "$TRAIN_DATASET" \
-  --output "$BURST_NPZ" \
-  --data-key "$TRAIN_DATA_KEY" \
-  --labels-key "$TRAIN_LABELS_KEY" \
-  --max-bursts "$MAX_BURSTS" \
-  "${LIMIT_ARGS[@]}"
+if [ "$REUSE_INTERMEDIATES" = "1" ] && [ -f "$BURST_NPZ" ]; then
+  echo "reuse: $BURST_NPZ"
+else
+  "$PYTHON_BIN" TOOB_Simulation/EXP/01_make_burst_dataset.py \
+    --input "$TRAIN_DATASET" \
+    --output "$BURST_NPZ" \
+    --data-key "$TRAIN_DATA_KEY" \
+    --labels-key "$TRAIN_LABELS_KEY" \
+    --max-bursts "$MAX_BURSTS" \
+    "${LIMIT_ARGS[@]}"
+fi
 
 EXCLUDE_ARGS=()
 if [ -n "$EXCLUDE_LABELS" ]; then
@@ -240,16 +251,21 @@ if [ -n "$EXCLUDE_LABELS" ]; then
 fi
 
 echo "[2/5] Cluster burst profiles -> pseudo labels"
-"$PYTHON_BIN" TOOB_Simulation/EXP/02_make_pseudo_labels.py \
-  --labels-npz "$BURST_NPZ" \
-  --output "$PSEUDO_NPZ" \
-  --json-output "$PSEUDO_JSON" \
-  --set-size "$SET_SIZE" \
-  --rounds "$CLUSTER_ROUNDS" \
-  --profile-method "$PROFILE_METHOD" \
-  --drop-unmapped \
-  "${MAPPING_ARGS[@]}" \
-  "${EXCLUDE_ARGS[@]}"
+if [ "$REUSE_INTERMEDIATES" = "1" ] && [ -f "$PSEUDO_NPZ" ] && [ -f "$PSEUDO_JSON" ]; then
+  echo "reuse: $PSEUDO_NPZ"
+  echo "reuse: $PSEUDO_JSON"
+else
+  "$PYTHON_BIN" TOOB_Simulation/EXP/02_make_pseudo_labels.py \
+    --labels-npz "$BURST_NPZ" \
+    --output "$PSEUDO_NPZ" \
+    --json-output "$PSEUDO_JSON" \
+    --set-size "$SET_SIZE" \
+    --rounds "$CLUSTER_ROUNDS" \
+    --profile-method "$PROFILE_METHOD" \
+    --drop-unmapped \
+    "${MAPPING_ARGS[@]}" \
+    "${EXCLUDE_ARGS[@]}"
+fi
 
 echo "[3/5] Train cluster-wise burst generators"
 "$PYTHON_BIN" TOOB_Simulation/EXP/03_train_generators.py \
@@ -264,6 +280,8 @@ echo "[3/5] Train cluster-wise burst generators"
   --noise-dim "$NOISE_DIM" \
   --overhead-threshold "$OVERHEAD_THRESHOLD" \
   --lambda-overhead "$LAMBDA_OVERHEAD" \
+  --overhead-loss "$OVERHEAD_LOSS" \
+  --overhead-tolerance "$OVERHEAD_TOLERANCE" \
   --lambda-tv "$LAMBDA_TV" \
   --attack-loss "$ATTACK_LOSS" \
   --detector-input-kind direction \
@@ -278,21 +296,30 @@ DEFENSE_BURST_NPZ="$BURST_NPZ"
 DEFENSE_PSEUDO_NPZ="$PSEUDO_NPZ"
 if [ -n "$VALID_DATASET" ]; then
   echo "[4/5] Valid direction sequence -> burst dataset"
-  "$PYTHON_BIN" TOOB_Simulation/EXP/01_make_burst_dataset.py \
-    --input "$VALID_DATASET" \
-    --output "$VALID_BURST_NPZ" \
-    --data-key "$VALID_DATA_KEY" \
-    --labels-key "$VALID_LABELS_KEY" \
-    --max-bursts "$MAX_BURSTS" \
-    "${VALID_LIMIT_ARGS[@]}"
+  if [ "$REUSE_INTERMEDIATES" = "1" ] && [ -f "$VALID_BURST_NPZ" ]; then
+    echo "reuse: $VALID_BURST_NPZ"
+  else
+    "$PYTHON_BIN" TOOB_Simulation/EXP/01_make_burst_dataset.py \
+      --input "$VALID_DATASET" \
+      --output "$VALID_BURST_NPZ" \
+      --data-key "$VALID_DATA_KEY" \
+      --labels-key "$VALID_LABELS_KEY" \
+      --max-bursts "$MAX_BURSTS" \
+      "${VALID_LIMIT_ARGS[@]}"
+  fi
 
   echo "[4/5] Map valid labels with train pseudo-label mapping"
-  "$PYTHON_BIN" TOOB_Simulation/EXP/02_make_pseudo_labels.py \
-    --labels-npz "$VALID_BURST_NPZ" \
-    --mapping "$PSEUDO_JSON" \
-    --output "$VALID_PSEUDO_NPZ" \
-    --json-output "$VALID_PSEUDO_JSON" \
-    --drop-unmapped
+  if [ "$REUSE_INTERMEDIATES" = "1" ] && [ -f "$VALID_PSEUDO_NPZ" ] && [ -f "$VALID_PSEUDO_JSON" ]; then
+    echo "reuse: $VALID_PSEUDO_NPZ"
+    echo "reuse: $VALID_PSEUDO_JSON"
+  else
+    "$PYTHON_BIN" TOOB_Simulation/EXP/02_make_pseudo_labels.py \
+      --labels-npz "$VALID_BURST_NPZ" \
+      --mapping "$PSEUDO_JSON" \
+      --output "$VALID_PSEUDO_NPZ" \
+      --json-output "$VALID_PSEUDO_JSON" \
+      --drop-unmapped
+  fi
 
   DEFENSE_BURST_NPZ="$VALID_BURST_NPZ"
   DEFENSE_PSEUDO_NPZ="$VALID_PSEUDO_NPZ"

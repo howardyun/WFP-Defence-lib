@@ -38,6 +38,136 @@ def _profile(bursts: np.ndarray, method: str = "super") -> np.ndarray:
     raise ValueError(f"Unknown profile method: {method}")
 
 
+def _summarize(values: list[float]) -> dict[str, float]:
+    if not values:
+        return {"min": 0.0, "max": 0.0, "mean": 0.0, "std": 0.0}
+    arr = np.asarray(values, dtype=np.float64)
+    return {
+        "min": float(np.min(arr)),
+        "max": float(np.max(arr)),
+        "mean": float(np.mean(arr)),
+        "std": float(np.std(arr)),
+    }
+
+
+def evaluate_cluster_quality(
+    bursts: np.ndarray,
+    labels: np.ndarray,
+    website_to_pseudo_label: dict[int, int],
+    *,
+    profile_method: str = "super",
+    exclude_labels: set[int] | None = None,
+) -> dict:
+    """Evaluate pseudo-label cluster quality on per-website burst profiles."""
+    labels_int = labels_to_int(labels)
+    exclude_labels = exclude_labels or set()
+    observed_labels = sorted(
+        label for label in set(int(v) for v in labels_int)
+        if label not in exclude_labels and label in website_to_pseudo_label
+    )
+    if not observed_labels:
+        return {
+            "profile_method": profile_method,
+            "num_websites": 0,
+            "num_pseudo_labels": 0,
+            "silhouette_mean": 0.0,
+            "silhouette_min": 0.0,
+            "intra_pairwise_distance": _summarize([]),
+            "inter_centroid_distance": _summarize([]),
+            "cluster_website_count": _summarize([]),
+            "cluster_sample_count": _summarize([]),
+            "per_cluster": {},
+        }
+
+    profiles: dict[int, np.ndarray] = {}
+    sample_counts: dict[int, int] = {}
+    for label in observed_labels:
+        mask = labels_int == label
+        profiles[label] = _profile(bursts[mask], method=profile_method)
+        sample_counts[label] = int(np.sum(mask))
+
+    grouped: dict[int, list[int]] = {}
+    for label in observed_labels:
+        grouped.setdefault(int(website_to_pseudo_label[label]), []).append(label)
+    grouped = {key: sorted(value) for key, value in sorted(grouped.items())}
+
+    label_to_index = {label: idx for idx, label in enumerate(observed_labels)}
+    stacked_profiles = np.stack([profiles[label] for label in observed_labels], axis=0)
+    distance_matrix = np.linalg.norm(
+        stacked_profiles[:, np.newaxis, :] - stacked_profiles[np.newaxis, :, :],
+        axis=2,
+    )
+
+    per_cluster = {}
+    intra_means = []
+    centroid_profiles = {}
+    for pseudo_label, websites in grouped.items():
+        indices = [label_to_index[label] for label in websites]
+        cluster_profiles = np.stack([profiles[label] for label in websites], axis=0)
+        centroid = np.mean(cluster_profiles, axis=0)
+        centroid_profiles[pseudo_label] = centroid
+
+        pairwise_values = []
+        if len(indices) > 1:
+            for left_pos, left_idx in enumerate(indices):
+                for right_idx in indices[left_pos + 1:]:
+                    pairwise_values.append(float(distance_matrix[left_idx, right_idx]))
+        if pairwise_values:
+            intra_means.append(float(np.mean(pairwise_values)))
+
+        sample_count = int(sum(sample_counts[label] for label in websites))
+        per_cluster[str(pseudo_label)] = {
+            "websites": [int(label) for label in websites],
+            "website_count": int(len(websites)),
+            "sample_count": sample_count,
+            "intra_pairwise_distance_mean": float(np.mean(pairwise_values)) if pairwise_values else 0.0,
+            "intra_pairwise_distance_max": float(np.max(pairwise_values)) if pairwise_values else 0.0,
+            "centroid_radius_mean": float(np.mean(np.linalg.norm(cluster_profiles - centroid, axis=1))),
+        }
+
+    inter_centroid_values = []
+    pseudo_labels = sorted(centroid_profiles)
+    for left_pos, left_label in enumerate(pseudo_labels):
+        for right_label in pseudo_labels[left_pos + 1:]:
+            inter_centroid_values.append(
+                float(np.linalg.norm(centroid_profiles[left_label] - centroid_profiles[right_label]))
+            )
+
+    silhouette_values = []
+    for label in observed_labels:
+        idx = label_to_index[label]
+        own_pseudo = int(website_to_pseudo_label[label])
+        own_websites = grouped[own_pseudo]
+        own_indices = [label_to_index[item] for item in own_websites if item != label]
+        a_value = float(np.mean(distance_matrix[idx, own_indices])) if own_indices else 0.0
+
+        other_means = []
+        for pseudo_label, websites in grouped.items():
+            if pseudo_label == own_pseudo:
+                continue
+            indices = [label_to_index[item] for item in websites]
+            if indices:
+                other_means.append(float(np.mean(distance_matrix[idx, indices])))
+        b_value = min(other_means) if other_means else 0.0
+        denominator = max(a_value, b_value)
+        silhouette_values.append(0.0 if denominator == 0 else (b_value - a_value) / denominator)
+
+    cluster_sizes = [float(value["website_count"]) for value in per_cluster.values()]
+    cluster_sample_counts = [float(value["sample_count"]) for value in per_cluster.values()]
+    return {
+        "profile_method": profile_method,
+        "num_websites": int(len(observed_labels)),
+        "num_pseudo_labels": int(len(grouped)),
+        "silhouette_mean": float(np.mean(silhouette_values)) if silhouette_values else 0.0,
+        "silhouette_min": float(np.min(silhouette_values)) if silhouette_values else 0.0,
+        "intra_pairwise_distance": _summarize(intra_means),
+        "inter_centroid_distance": _summarize(inter_centroid_values),
+        "cluster_website_count": _summarize(cluster_sizes),
+        "cluster_sample_count": _summarize(cluster_sample_counts),
+        "per_cluster": per_cluster,
+    }
+
+
 def cluster_websites(
     bursts: np.ndarray,
     labels: np.ndarray,

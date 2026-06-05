@@ -9,7 +9,7 @@ import numpy as np
 from _bootstrap import ensure_project_root
 
 ensure_project_root(required_modules=("cluster", "data", "pseudo"))
-from toob.cluster import cluster_websites
+from toob.cluster import cluster_websites, evaluate_cluster_quality
 from toob.data import load_npz_dataset, save_npz_dataset
 from toob.pseudo import labels_to_pseudo, load_website_to_pseudo_label
 
@@ -71,6 +71,13 @@ def main() -> int:
         drop_unmapped=args.drop_unmapped,
     )
     kept_labels = labels[keep_indices]
+    cluster_quality = evaluate_cluster_quality(
+        bursts,
+        labels,
+        website_to_pseudo_label,
+        profile_method=args.profile_method,
+        exclude_labels=exclude_labels,
+    )
     save_npz_dataset(args.output, labels=kept_labels, pseudo_labels=pseudo, keep_indices=keep_indices)
     unique, counts = np.unique(pseudo, return_counts=True)
 
@@ -94,6 +101,7 @@ def main() -> int:
         },
         "pseudo_label_counts": {str(int(label)): int(count) for label, count in zip(unique, counts)},
         "cluster": cluster_info,
+        "cluster_quality": cluster_quality,
         "samples": [
             {
                 "original_index": int(original_idx),
@@ -111,6 +119,18 @@ def main() -> int:
     print("pseudo label counts:")
     for label, count in zip(unique, counts):
         print(f"  {int(label)}: {int(count)}")
+    print("cluster quality:")
+    print(f"  silhouette_mean: {cluster_quality['silhouette_mean']:.6f}")
+    print(
+        "  cluster website count min/max: "
+        f"{cluster_quality['cluster_website_count']['min']:.0f}/"
+        f"{cluster_quality['cluster_website_count']['max']:.0f}"
+    )
+    print(
+        "  cluster sample count min/max: "
+        f"{cluster_quality['cluster_sample_count']['min']:.0f}/"
+        f"{cluster_quality['cluster_sample_count']['max']:.0f}"
+    )
     return 0
 
 
