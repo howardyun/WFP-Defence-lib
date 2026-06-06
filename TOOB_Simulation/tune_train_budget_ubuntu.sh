@@ -38,8 +38,18 @@ SET_SIZE="${SET_SIZE:-30}"
 PROFILE_METHOD="${PROFILE_METHOD:-super}"
 # Labels excluded before clustering.
 EXCLUDE_LABELS="${EXCLUDE_LABELS:-95}"
+# Optional precomputed website-to-pseudo-label mapping JSON/NPY.
+MAPPING="${MAPPING:-}"
+# Optional fixed pseudo-label cluster count used for reporting when MAPPING is set.
+CLUSTER_COUNT="${CLUSTER_COUNT:-}"
 # Shared directory for burst datasets and pseudo labels reused across candidates.
-CLUSTER_CACHE_DIR="${CLUSTER_CACHE_DIR:-${TUNE_DIR}/cluster_cache_set${SET_SIZE}_${PROFILE_METHOD}_exclude${EXCLUDE_LABELS// /_}}"
+if [ -n "$MAPPING" ]; then
+  mapping_name="$(basename "$MAPPING")"
+  mapping_name="${mapping_name%.*}"
+  CLUSTER_CACHE_DIR="${CLUSTER_CACHE_DIR:-${TUNE_DIR}/cluster_cache_mapping_${mapping_name}}"
+else
+  CLUSTER_CACHE_DIR="${CLUSTER_CACHE_DIR:-${TUNE_DIR}/cluster_cache_set${SET_SIZE}_${PROFILE_METHOD}_exclude${EXCLUDE_LABELS// /_}}"
+fi
 
 # Full-mode defaults forwarded to run_exp_ubuntu.sh unless already overridden.
 FULL_EPOCHS="${FULL_EPOCHS:-30}"
@@ -100,10 +110,24 @@ mode_noise_dim() {
 mkdir -p "$TUNE_DIR"
 mkdir -p "$CLUSTER_CACHE_DIR"
 
+CACHE_BURST_NPZ="${BURST_NPZ:-${CLUSTER_CACHE_DIR}/burst_dataset.npz}"
+CACHE_PSEUDO_NPZ="${PSEUDO_NPZ:-${CLUSTER_CACHE_DIR}/pseudo_labels.npz}"
+CACHE_PSEUDO_JSON="${PSEUDO_JSON:-${CLUSTER_CACHE_DIR}/pseudo_labels.json}"
+CACHE_VALID_BURST_NPZ="${VALID_BURST_NPZ:-${CLUSTER_CACHE_DIR}/valid_burst_dataset.npz}"
+CACHE_VALID_PSEUDO_NPZ="${VALID_PSEUDO_NPZ:-${CLUSTER_CACHE_DIR}/valid_pseudo_labels.npz}"
+CACHE_VALID_PSEUDO_JSON="${VALID_PSEUDO_JSON:-${CLUSTER_CACHE_DIR}/valid_pseudo_labels.json}"
+
 echo "Train-time tuning"
 echo "  mode: $TUNE_MODE"
 echo "  tune dir: $TUNE_DIR"
 echo "  cluster cache dir: $CLUSTER_CACHE_DIR"
+echo "  burst npz: $CACHE_BURST_NPZ"
+if [ -n "$MAPPING" ]; then
+  echo "  mapping: $MAPPING"
+fi
+if [ -n "$CLUSTER_COUNT" ]; then
+  echo "  cluster count: $CLUSTER_COUNT"
+fi
 echo "  targets: $OVERHEAD_TARGETS"
 echo "  lambdas: $LAMBDA_OVERHEADS"
 echo "  overhead losses: $OVERHEAD_LOSSES"
@@ -112,6 +136,14 @@ echo "  attack losses: $ATTACK_LOSSES"
 run_epochs="$(mode_epochs)"
 run_batch_size="$(mode_batch_size)"
 run_noise_dim="$(mode_noise_dim)"
+CONFIG_CLUSTER_ARGS=()
+if [ -n "$CLUSTER_COUNT" ]; then
+  CONFIG_CLUSTER_ARGS=(--cluster-count "$CLUSTER_COUNT")
+fi
+CONFIG_MAPPING_ARGS=()
+if [ -n "$MAPPING" ]; then
+  CONFIG_MAPPING_ARGS=(--mapping "$MAPPING")
+fi
 
 for target in $OVERHEAD_TARGETS; do
   target_tag="$(tag_value "$target")"
@@ -144,6 +176,8 @@ for target in $OVERHEAD_TARGETS; do
           --attack-loss "$attack_loss" \
           --soft-projection-tau "$SOFT_PROJECTION_TAU" \
           --set-size "$SET_SIZE" \
+          "${CONFIG_CLUSTER_ARGS[@]}" \
+          "${CONFIG_MAPPING_ARGS[@]}" \
           --epochs "$run_epochs" \
           --batch-size "$run_batch_size" \
           --noise-dim "$run_noise_dim" \
@@ -152,12 +186,12 @@ for target in $OVERHEAD_TARGETS; do
 
         echo "[run] $run_name"
         OUT_DIR="$run_dir" \
-        BURST_NPZ="${CLUSTER_CACHE_DIR}/burst_dataset.npz" \
-        PSEUDO_NPZ="${CLUSTER_CACHE_DIR}/pseudo_labels.npz" \
-        PSEUDO_JSON="${CLUSTER_CACHE_DIR}/pseudo_labels.json" \
-        VALID_BURST_NPZ="${CLUSTER_CACHE_DIR}/valid_burst_dataset.npz" \
-        VALID_PSEUDO_NPZ="${CLUSTER_CACHE_DIR}/valid_pseudo_labels.npz" \
-        VALID_PSEUDO_JSON="${CLUSTER_CACHE_DIR}/valid_pseudo_labels.json" \
+        BURST_NPZ="$CACHE_BURST_NPZ" \
+        PSEUDO_NPZ="$CACHE_PSEUDO_NPZ" \
+        PSEUDO_JSON="$CACHE_PSEUDO_JSON" \
+        VALID_BURST_NPZ="$CACHE_VALID_BURST_NPZ" \
+        VALID_PSEUDO_NPZ="$CACHE_VALID_PSEUDO_NPZ" \
+        VALID_PSEUDO_JSON="$CACHE_VALID_PSEUDO_JSON" \
         REUSE_INTERMEDIATES=1 \
         OVERHEAD_THRESHOLD="$target" \
         LAMBDA_OVERHEAD="$lambda_overhead" \
@@ -168,6 +202,7 @@ for target in $OVERHEAD_TARGETS; do
         SET_SIZE="$SET_SIZE" \
         PROFILE_METHOD="$PROFILE_METHOD" \
         EXCLUDE_LABELS="$EXCLUDE_LABELS" \
+        MAPPING="$MAPPING" \
         FULL_EPOCHS="$FULL_EPOCHS" \
         FULL_BATCH_SIZE="$FULL_BATCH_SIZE" \
         FULL_NOISE_DIM="$FULL_NOISE_DIM" \

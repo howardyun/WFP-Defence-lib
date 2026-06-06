@@ -337,6 +337,14 @@ def write_csv(rows: list[dict[str, Any]], path: Path) -> None:
         writer.writerows(rows)
 
 
+def build_website_to_pseudo_label(row: dict[str, Any]) -> dict[str, int]:
+    mapping: dict[str, int] = {}
+    for pseudo_label, websites in row["pseudo_label_to_websites"].items():
+        for website in websites:
+            mapping[str(int(website))] = int(pseudo_label)
+    return dict(sorted(mapping.items(), key=lambda item: int(item[0])))
+
+
 def main() -> int:
     args = parse_args()
     burst_path = resolve_burst_path(args.burst_npz)
@@ -404,9 +412,32 @@ def main() -> int:
     csv_path = output_dir / "cluster_count_probe.csv"
     json_path = output_dir / "cluster_count_probe.json"
     recommendation_path = output_dir / "recommendation.json"
+    mapping_path = output_dir / "mapping_recommended.json"
+    mapping_report = {
+        "source": "cluster_probe",
+        "k": int(recommendation["k"]),
+        "suggested_set_size": int(recommendation["suggested_set_size"]),
+        "profile_method": args.profile_method,
+        "normalize": args.normalize,
+        "exclude_labels": [int(value) for value in args.exclude_labels],
+        "website_to_pseudo_label": build_website_to_pseudo_label(recommendation),
+        "pseudo_label_to_websites": recommendation["pseudo_label_to_websites"],
+        "cluster_quality": {
+            "silhouette_mean": recommendation["silhouette_mean"],
+            "silhouette_min": recommendation["silhouette_min"],
+            "calinski_harabasz": recommendation["calinski_harabasz"],
+            "davies_bouldin": recommendation["davies_bouldin"],
+            "cluster_site_count_min": recommendation["cluster_site_count_min"],
+            "cluster_site_count_max": recommendation["cluster_site_count_max"],
+            "cluster_sample_count_min": recommendation["cluster_sample_count_min"],
+            "cluster_sample_count_max": recommendation["cluster_sample_count_max"],
+            "balance_ratio": recommendation["balance_ratio"],
+        },
+    }
     write_csv(rows, csv_path)
     json_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     recommendation_path.write_text(json.dumps(recommendation, indent=2), encoding="utf-8")
+    mapping_path.write_text(json.dumps(mapping_report, indent=2), encoding="utf-8")
 
     print(f"burst dataset: {burst_path}")
     print(f"evaluated K: {' '.join(str(value) for value in k_values)}")
@@ -420,6 +451,7 @@ def main() -> int:
     print(f"saved csv: {csv_path}")
     print(f"saved json: {json_path}")
     print(f"saved recommendation: {recommendation_path}")
+    print(f"saved mapping: {mapping_path}")
     return 0
 
 

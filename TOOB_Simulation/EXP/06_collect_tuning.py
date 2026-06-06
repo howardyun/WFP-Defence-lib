@@ -26,6 +26,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--attack-loss")
     parser.add_argument("--soft-projection-tau", type=float)
     parser.add_argument("--set-size", type=int)
+    parser.add_argument("--cluster-count", type=int)
+    parser.add_argument("--mapping")
     parser.add_argument("--epochs", type=int)
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--noise-dim", type=int)
@@ -46,6 +48,8 @@ def write_config(args: argparse.Namespace) -> int:
         "attack_loss": args.attack_loss,
         "soft_projection_tau": args.soft_projection_tau,
         "set_size": args.set_size,
+        "cluster_count": args.cluster_count,
+        "mapping": args.mapping,
         "epochs": args.epochs,
         "batch_size": args.batch_size,
         "noise_dim": args.noise_dim,
@@ -95,6 +99,8 @@ def collect(tune_dir: Path) -> list[dict[str, Any]]:
             "attack_loss": config.get("attack_loss"),
             "soft_projection_tau": config.get("soft_projection_tau"),
             "set_size": config.get("set_size"),
+            "cluster_count": config.get("cluster_count"),
+            "mapping": config.get("mapping"),
             "epochs": config.get("epochs"),
             "batch_size": config.get("batch_size"),
             "noise_dim": config.get("noise_dim"),
@@ -120,6 +126,8 @@ def write_outputs(rows: list[dict[str, Any]], csv_path: Path, json_path: Path) -
         "attack_loss",
         "soft_projection_tau",
         "set_size",
+        "cluster_count",
+        "mapping",
         "epochs",
         "batch_size",
         "noise_dim",
