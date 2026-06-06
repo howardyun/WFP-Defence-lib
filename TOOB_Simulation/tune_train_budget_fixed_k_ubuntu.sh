@@ -31,6 +31,23 @@ TUNE_ROOT="${TUNE_ROOT:-TOOB_Simulation/outputs_train_tuning_fixed_k}"
 # Fixed pseudo-label cluster counts to evaluate.
 CLUSTER_COUNTS="${CLUSTER_COUNTS:-4 5 6}"
 
+# Target training overhead budgets. 0.20 means around 20% extra packets.
+OVERHEAD_TARGETS="${OVERHEAD_TARGETS:-0.10 0.20 0.30}"
+# Candidate penalty weights. Higher values enforce the budget more strongly.
+LAMBDA_OVERHEADS="${LAMBDA_OVERHEADS:-5.0 10.0 20.0 50.0}"
+# Training-time overhead loss modes: hinge, target_l1, target_l2, or band.
+OVERHEAD_LOSSES="${OVERHEAD_LOSSES:-target_l2 band}"
+# Allowed +/- band when OVERHEAD_LOSS=band.
+OVERHEAD_TOLERANCE="${OVERHEAD_TOLERANCE:-0.02}"
+# Candidate attack objectives: true_prob, true_logit, or negative_ce.
+ATTACK_LOSSES="${ATTACK_LOSSES:-true_prob}"
+# Soft burst-to-direction sharpness used during training.
+SOFT_PROJECTION_TAU="${SOFT_PROJECTION_TAU:-1.5}"
+# Allowed overhead overshoot when selecting best_by_target rows.
+BUDGET_SLACK="${BUDGET_SLACK:-0.02}"
+# Metric minimized when choosing the best row under each target budget.
+SELECT_METRIC="${SELECT_METRIC:-accuracy}"
+
 # Backward-compatible default dataset path used when TRAIN_DATASET is not set.
 DATASET="${DATASET:-TOOB_Simulation/data/raw/train.npz}"
 # Key for direction traces in DATASET.
@@ -133,6 +150,10 @@ echo "  shared burst npz: $SHARED_BURST_NPZ"
 echo "  profile method: $PROFILE_METHOD"
 echo "  normalize: $NORMALIZE"
 echo "  exclude labels: $EXCLUDE_LABELS"
+echo "  targets: $OVERHEAD_TARGETS"
+echo "  lambdas: $LAMBDA_OVERHEADS"
+echo "  overhead losses: $OVERHEAD_LOSSES"
+echo "  attack losses: $ATTACK_LOSSES"
 
 echo "[0/3] Prepare shared burst dataset"
 if [ "$REUSE_INTERMEDIATES" = "1" ] && [ -f "$SHARED_BURST_NPZ" ]; then
@@ -195,6 +216,14 @@ for cluster_count in $CLUSTER_COUNTS; do
   CLUSTER_COUNT="$cluster_count" \
   PROFILE_METHOD="$PROFILE_METHOD" \
   EXCLUDE_LABELS="$EXCLUDE_LABELS" \
+  OVERHEAD_TARGETS="$OVERHEAD_TARGETS" \
+  LAMBDA_OVERHEADS="$LAMBDA_OVERHEADS" \
+  OVERHEAD_LOSSES="$OVERHEAD_LOSSES" \
+  OVERHEAD_TOLERANCE="$OVERHEAD_TOLERANCE" \
+  ATTACK_LOSSES="$ATTACK_LOSSES" \
+  SOFT_PROJECTION_TAU="$SOFT_PROJECTION_TAU" \
+  BUDGET_SLACK="$BUDGET_SLACK" \
+  SELECT_METRIC="$SELECT_METRIC" \
   DATASET="$DATASET" \
   DATA_KEY="$DATA_KEY" \
   LABELS_KEY="$LABELS_KEY" \

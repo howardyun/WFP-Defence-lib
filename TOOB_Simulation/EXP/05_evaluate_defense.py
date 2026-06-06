@@ -11,7 +11,13 @@ from tqdm import tqdm
 from _bootstrap import ensure_project_root
 
 ensure_project_root(required_modules=("burst", "data", "detector", "generator", "pseudo"))
-from toob.burst import apply_burst_perturbation, burst_to_direction, direction_to_burst, overhead_ratio
+from toob.burst import (
+    apply_burst_perturbation,
+    burst_to_direction,
+    direction_to_burst,
+    direction_to_sign_sequence,
+    overhead_ratio,
+)
 from toob.data import labels_to_int, load_npz_dataset
 from toob.detector import format_detector_input, load_detector
 from toob.generator import build_generator_from_checkpoint
@@ -150,6 +156,8 @@ def prepare_detector_data(
     max_trace_len: int,
 ) -> np.ndarray:
     if current_kind == detector_input_kind:
+        if detector_input_kind == "direction":
+            return direction_to_sign_sequence(data, max_trace_len=max_trace_len)
         return np.asarray(data, dtype=np.float32)
     if current_kind == "direction" and detector_input_kind == "burst":
         return direction_to_burst(data, max_bursts=max_bursts)

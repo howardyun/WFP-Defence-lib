@@ -18,7 +18,8 @@ def direction_to_burst(direction_data: np.ndarray, max_bursts: int | None = None
     """Convert packet direction sequences to signed burst-count sequences.
 
     Input rows contain positive values for outgoing packets, negative values for
-    incoming packets, and zeros for padding.
+    incoming packets, and zeros for padding. Magnitudes are ignored, so signed
+    timestamp traces are handled as direction-only traces.
     """
     directions = np.asarray(direction_data)
     if directions.ndim != 2:
@@ -42,6 +43,19 @@ def direction_to_burst(direction_data: np.ndarray, max_bursts: int | None = None
                     break
             bursts[row_idx, burst_idx] += sign
     return bursts
+
+
+def direction_to_sign_sequence(direction_data: np.ndarray, max_trace_len: int) -> np.ndarray:
+    """Convert signed packet traces to DF-style direction features."""
+    directions = np.sign(np.asarray(direction_data, dtype=np.float32))
+    if directions.ndim != 2:
+        raise ValueError(f"direction_data must be 2-D, got shape {directions.shape}")
+    if directions.shape[1] > max_trace_len:
+        return directions[:, :max_trace_len].astype(np.float32, copy=False)
+    if directions.shape[1] < max_trace_len:
+        pad_width = ((0, 0), (0, max_trace_len - directions.shape[1]))
+        directions = np.pad(directions, pad_width=pad_width, mode="constant", constant_values=0)
+    return directions.astype(np.float32, copy=False)
 
 
 def burst_to_direction(burst_data: np.ndarray, max_trace_len: int) -> np.ndarray:
