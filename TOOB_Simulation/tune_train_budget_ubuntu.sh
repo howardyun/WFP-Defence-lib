@@ -36,8 +36,12 @@ OVERHEAD_LOSSES="${OVERHEAD_LOSSES:-target_l2 band}"
 OVERHEAD_TOLERANCE="${OVERHEAD_TOLERANCE:-0.02}"
 # Candidate attack objectives: true_prob, true_logit, or negative_ce.
 ATTACK_LOSSES="${ATTACK_LOSSES:-true_prob}"
+# Weight of total-variation smoothing on generated burst padding.
+LAMBDA_TV="${LAMBDA_TV:-0.001}"
 # Soft burst-to-direction sharpness used during training.
 SOFT_PROJECTION_TAU="${SOFT_PROJECTION_TAU:-1.5}"
+# Generator optimizer learning rate.
+LR="${LR:-1e-4}"
 # Target number of original website labels per pseudo-label cluster.
 SET_SIZE="${SET_SIZE:-30}"
 # Burst profile used for website clustering.
@@ -138,6 +142,8 @@ echo "  targets: $OVERHEAD_TARGETS"
 echo "  lambdas: $LAMBDA_OVERHEADS"
 echo "  overhead losses: $OVERHEAD_LOSSES"
 echo "  attack losses: $ATTACK_LOSSES"
+echo "  lambda tv: $LAMBDA_TV"
+echo "  lr: $LR"
 
 run_epochs="$(mode_epochs)"
 run_batch_size="$(mode_batch_size)"
@@ -180,7 +186,9 @@ for target in $OVERHEAD_TARGETS; do
           --overhead-loss "$overhead_loss" \
           --overhead-tolerance "$OVERHEAD_TOLERANCE" \
           --attack-loss "$attack_loss" \
+          --lambda-tv "$LAMBDA_TV" \
           --soft-projection-tau "$SOFT_PROJECTION_TAU" \
+          --lr "$LR" \
           --set-size "$SET_SIZE" \
           "${CONFIG_CLUSTER_ARGS[@]}" \
           "${CONFIG_MAPPING_ARGS[@]}" \
@@ -204,7 +212,9 @@ for target in $OVERHEAD_TARGETS; do
         OVERHEAD_LOSS="$overhead_loss" \
         OVERHEAD_TOLERANCE="$OVERHEAD_TOLERANCE" \
         ATTACK_LOSS="$attack_loss" \
+        LAMBDA_TV="$LAMBDA_TV" \
         SOFT_PROJECTION_TAU="$SOFT_PROJECTION_TAU" \
+        LR="$LR" \
         SET_SIZE="$SET_SIZE" \
         PROFILE_METHOD="$PROFILE_METHOD" \
         EXCLUDE_LABELS="$EXCLUDE_LABELS" \

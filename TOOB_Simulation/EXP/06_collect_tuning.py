@@ -24,7 +24,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--overhead-loss")
     parser.add_argument("--overhead-tolerance", type=float)
     parser.add_argument("--attack-loss")
+    parser.add_argument("--lambda-tv", type=float)
     parser.add_argument("--soft-projection-tau", type=float)
+    parser.add_argument("--lr", type=float)
     parser.add_argument("--set-size", type=int)
     parser.add_argument("--cluster-count", type=int)
     parser.add_argument("--mapping")
@@ -46,7 +48,9 @@ def write_config(args: argparse.Namespace) -> int:
         "overhead_loss": args.overhead_loss,
         "overhead_tolerance": args.overhead_tolerance,
         "attack_loss": args.attack_loss,
+        "lambda_tv": args.lambda_tv,
         "soft_projection_tau": args.soft_projection_tau,
+        "lr": args.lr,
         "set_size": args.set_size,
         "cluster_count": args.cluster_count,
         "mapping": args.mapping,
@@ -97,7 +101,9 @@ def collect(tune_dir: Path) -> list[dict[str, Any]]:
             "overhead_loss": config.get("overhead_loss"),
             "overhead_tolerance": config.get("overhead_tolerance"),
             "attack_loss": config.get("attack_loss"),
+            "lambda_tv": config.get("lambda_tv"),
             "soft_projection_tau": config.get("soft_projection_tau"),
+            "lr": config.get("lr"),
             "set_size": config.get("set_size"),
             "cluster_count": config.get("cluster_count"),
             "mapping": config.get("mapping"),
@@ -124,7 +130,9 @@ def write_outputs(rows: list[dict[str, Any]], csv_path: Path, json_path: Path) -
         "overhead_loss",
         "overhead_tolerance",
         "attack_loss",
+        "lambda_tv",
         "soft_projection_tau",
+        "lr",
         "set_size",
         "cluster_count",
         "mapping",

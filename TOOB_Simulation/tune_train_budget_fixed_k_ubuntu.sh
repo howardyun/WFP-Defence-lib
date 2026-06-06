@@ -31,18 +31,28 @@ TUNE_ROOT="${TUNE_ROOT:-TOOB_Simulation/outputs_train_tuning_fixed_k}"
 # Fixed pseudo-label cluster counts to evaluate.
 CLUSTER_COUNTS="${CLUSTER_COUNTS:-4 5 6}"
 
-# Target training overhead budgets. 0.20 means around 20% extra packets.
-OVERHEAD_TARGETS="${OVERHEAD_TARGETS:-0.10 0.20 0.30}"
-# Candidate penalty weights. Higher values enforce the budget more strongly.
-LAMBDA_OVERHEADS="${LAMBDA_OVERHEADS:-5.0 10.0 20.0 50.0}"
-# Training-time overhead loss modes: hinge, target_l1, target_l2, or band.
-OVERHEAD_LOSSES="${OVERHEAD_LOSSES:-target_l2 band}"
+# Target training overhead budgets. ALERT uses 0.22; multiple values give a bandwidth curve.
+OVERHEAD_TARGETS="${OVERHEAD_TARGETS:-0.10 0.20 0.30 0.40}"
+# ALERT-style default: keep attack and overhead terms equally weighted.
+LAMBDA_OVERHEADS="${LAMBDA_OVERHEADS:-1.0}"
+# ALERT-style overhead loss: max(0, overhead - target).
+OVERHEAD_LOSSES="${OVERHEAD_LOSSES:-hinge}"
 # Allowed +/- band when OVERHEAD_LOSS=band.
 OVERHEAD_TOLERANCE="${OVERHEAD_TOLERANCE:-0.02}"
-# Candidate attack objectives: true_prob, true_logit, or negative_ce.
+# ALERT's Keras model outputs softmax probabilities, so true_prob is the closest PyTorch match.
 ATTACK_LOSSES="${ATTACK_LOSSES:-true_prob}"
+# ALERT does not use an explicit TV smoothing term.
+LAMBDA_TV="${LAMBDA_TV:-0.0}"
 # Soft burst-to-direction sharpness used during training.
 SOFT_PROJECTION_TAU="${SOFT_PROJECTION_TAU:-1.5}"
+# Generator optimizer learning rate; ALERT uses Adam(1e-4).
+LR="${LR:-1e-4}"
+# Full-mode training epochs.
+FULL_EPOCHS="${FULL_EPOCHS:-30}"
+# Full-mode batch size; ALERT uses 64.
+FULL_BATCH_SIZE="${FULL_BATCH_SIZE:-64}"
+# Full-mode generator input noise dimension; ALERT uses data_length=2000.
+FULL_NOISE_DIM="${FULL_NOISE_DIM:-2000}"
 # Allowed overhead overshoot when selecting best_by_target rows.
 BUDGET_SLACK="${BUDGET_SLACK:-0.02}"
 # Metric minimized when choosing the best row under each target budget.
@@ -154,6 +164,9 @@ echo "  targets: $OVERHEAD_TARGETS"
 echo "  lambdas: $LAMBDA_OVERHEADS"
 echo "  overhead losses: $OVERHEAD_LOSSES"
 echo "  attack losses: $ATTACK_LOSSES"
+echo "  lambda tv: $LAMBDA_TV"
+echo "  lr: $LR"
+echo "  full epochs/batch/noise: $FULL_EPOCHS/$FULL_BATCH_SIZE/$FULL_NOISE_DIM"
 
 echo "[0/3] Prepare shared burst dataset"
 if [ "$REUSE_INTERMEDIATES" = "1" ] && [ -f "$SHARED_BURST_NPZ" ]; then
@@ -221,7 +234,12 @@ for cluster_count in $CLUSTER_COUNTS; do
   OVERHEAD_LOSSES="$OVERHEAD_LOSSES" \
   OVERHEAD_TOLERANCE="$OVERHEAD_TOLERANCE" \
   ATTACK_LOSSES="$ATTACK_LOSSES" \
+  LAMBDA_TV="$LAMBDA_TV" \
   SOFT_PROJECTION_TAU="$SOFT_PROJECTION_TAU" \
+  LR="$LR" \
+  FULL_EPOCHS="$FULL_EPOCHS" \
+  FULL_BATCH_SIZE="$FULL_BATCH_SIZE" \
+  FULL_NOISE_DIM="$FULL_NOISE_DIM" \
   BUDGET_SLACK="$BUDGET_SLACK" \
   SELECT_METRIC="$SELECT_METRIC" \
   DATASET="$DATASET" \
