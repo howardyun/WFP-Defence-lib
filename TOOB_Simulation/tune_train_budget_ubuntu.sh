@@ -23,13 +23,13 @@ TUNE_DIR="${TUNE_DIR:-TOOB_Simulation/outputs_train_tuning}"
 # Target training overhead budgets. 0.20 means around 20% extra packets.
 OVERHEAD_TARGETS="${OVERHEAD_TARGETS:-0.10 0.20 0.30}"
 # Candidate penalty weights. Higher values enforce the budget more strongly.
-LAMBDA_OVERHEADS="${LAMBDA_OVERHEADS:-0.5 1.0 2.0}"
+LAMBDA_OVERHEADS="${LAMBDA_OVERHEADS:-5.0 10.0 20.0 50.0}"
 # Training-time overhead loss modes: hinge, target_l1, target_l2, or band.
-OVERHEAD_LOSSES="${OVERHEAD_LOSSES:-target_l2}"
+OVERHEAD_LOSSES="${OVERHEAD_LOSSES:-target_l2 band}"
 # Allowed +/- band when OVERHEAD_LOSS=band.
 OVERHEAD_TOLERANCE="${OVERHEAD_TOLERANCE:-0.02}"
 # Candidate attack objectives: true_prob, true_logit, or negative_ce.
-ATTACK_LOSSES="${ATTACK_LOSSES:-true_logit}"
+ATTACK_LOSSES="${ATTACK_LOSSES:-true_prob}"
 # Soft burst-to-direction sharpness used during training.
 SOFT_PROJECTION_TAU="${SOFT_PROJECTION_TAU:-1.5}"
 # Target number of original website labels per pseudo-label cluster.
