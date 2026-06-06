@@ -12,6 +12,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${REPO_ROOT}"
 
+source "${SCRIPT_DIR}/env_threads.sh"
+
 # Python executable used for burst conversion, K probing, and result collection.
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 # Runner that performs bandwidth/loss tuning for one fixed mapping.
@@ -19,7 +21,11 @@ TUNE_RUNNER="${TUNE_RUNNER:-TOOB_Simulation/tune_train_budget_ubuntu.sh}"
 # Runner used internally by TUNE_RUNNER for one candidate.
 RUNNER="${RUNNER:-TOOB_Simulation/run_exp_ubuntu.sh}"
 # run_exp_ubuntu.sh mode used per candidate: smoke, one, or full.
-TUNE_MODE="${TUNE_MODE:-full}"
+if [ "$#" -gt 0 ]; then
+  TUNE_MODE="$1"
+else
+  TUNE_MODE="${TUNE_MODE:-full}"
+fi
 # Parent directory containing one k*/ tuning directory per fixed K.
 TUNE_ROOT="${TUNE_ROOT:-TOOB_Simulation/outputs_train_tuning_fixed_k}"
 # Fixed pseudo-label cluster counts to evaluate.

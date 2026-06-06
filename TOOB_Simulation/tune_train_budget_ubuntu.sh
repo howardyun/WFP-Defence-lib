@@ -11,12 +11,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${REPO_ROOT}"
 
+source "${SCRIPT_DIR}/env_threads.sh"
+
 # Python executable used for config writing and result collection.
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 # Runner used for each candidate training run.
 RUNNER="${RUNNER:-TOOB_Simulation/run_exp_ubuntu.sh}"
 # run_exp_ubuntu.sh mode used per candidate: smoke, one, or full.
-TUNE_MODE="${TUNE_MODE:-full}"
+if [ "$#" -gt 0 ]; then
+  TUNE_MODE="$1"
+else
+  TUNE_MODE="${TUNE_MODE:-full}"
+fi
 # Directory containing one subdirectory per candidate run.
 TUNE_DIR="${TUNE_DIR:-TOOB_Simulation/outputs_train_tuning}"
 
