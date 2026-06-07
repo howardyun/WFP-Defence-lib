@@ -143,6 +143,66 @@ def soft_burst_to_direction(
     return projected.clamp(-1.0, 1.0)
 
 
+def hard_burst_to_direction(
+    burst_batch: torch.Tensor,
+    *,
+    trace_len: int = 5000,
+    chunk_size: int = 128,
+) -> torch.Tensor:
+    """Project signed burst counts to hard DF-style direction sequences."""
+    if burst_batch.ndim != 2:
+        raise ValueError(f"burst_batch must be 2-D [N, K], got shape {tuple(burst_batch.shape)}")
+
+    lengths = torch.round(torch.abs(burst_batch)).clamp_min(0)
+    signs = torch.sign(burst_batch)
+    ends = torch.cumsum(lengths, dim=1)
+    starts = ends - lengths
+
+    positions = (
+        torch.arange(trace_len, device=burst_batch.device, dtype=burst_batch.dtype)
+        .view(1, 1, trace_len)
+        + 0.5
+    )
+    projected = torch.zeros(
+        burst_batch.shape[0],
+        trace_len,
+        device=burst_batch.device,
+        dtype=burst_batch.dtype,
+    )
+
+    for start_idx in range(0, burst_batch.shape[1], chunk_size):
+        end_idx = min(start_idx + chunk_size, burst_batch.shape[1])
+        chunk_starts = starts[:, start_idx:end_idx].unsqueeze(-1)
+        chunk_ends = ends[:, start_idx:end_idx].unsqueeze(-1)
+        chunk_signs = signs[:, start_idx:end_idx].unsqueeze(-1)
+        occupancy = ((positions > chunk_starts) & (positions <= chunk_ends)).to(burst_batch.dtype)
+        projected = projected + torch.sum(chunk_signs * occupancy, dim=1)
+
+    return projected.clamp(-1.0, 1.0)
+
+
+def straight_through_burst_to_direction(
+    burst_batch: torch.Tensor,
+    *,
+    trace_len: int = 5000,
+    tau: float = 1.5,
+    chunk_size: int = 128,
+) -> torch.Tensor:
+    """Use hard direction values in the forward pass and soft gradients backward."""
+    soft = soft_burst_to_direction(
+        burst_batch,
+        trace_len=trace_len,
+        tau=tau,
+        chunk_size=chunk_size,
+    )
+    hard = hard_burst_to_direction(
+        burst_batch,
+        trace_len=trace_len,
+        chunk_size=chunk_size,
+    )
+    return soft + (hard - soft).detach()
+
+
 def overhead_ratio(original: torch.Tensor, defended: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     """Return per-sample bandwidth overhead in burst space."""
     added = torch.sum(torch.abs(defended) - torch.abs(original), dim=1)

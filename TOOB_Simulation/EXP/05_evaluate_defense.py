@@ -31,6 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data-key", default="data")
     parser.add_argument("--labels-key", default="labels")
     parser.add_argument("--limit", type=int, help="Optional sample limit for quick checks.")
+    parser.add_argument("--exclude-labels", nargs="*", type=int, default=(), help="Labels to drop before defense/evaluation.")
 
     parser.add_argument("--defense", choices=("none", "toob"), default="none")
     parser.add_argument("--generator-dir", help="Directory containing generator_pseudo_*.pt files.")
@@ -325,6 +326,20 @@ def main() -> int:
 
     pseudo_labels = load_optional_array(args.input_npz, "pseudo_labels")
     overhead_values = load_optional_array(args.input_npz, "overhead")
+    if pseudo_labels is not None and args.limit:
+        pseudo_labels = pseudo_labels[:args.limit]
+    if overhead_values is not None and args.limit:
+        overhead_values = overhead_values[:args.limit]
+
+    if args.exclude_labels:
+        keep_mask = ~np.isin(labels, np.asarray(args.exclude_labels, dtype=np.int64))
+        data = data[keep_mask]
+        labels = labels[keep_mask]
+        if pseudo_labels is not None:
+            pseudo_labels = pseudo_labels[keep_mask]
+        if overhead_values is not None:
+            overhead_values = overhead_values[keep_mask]
+
     keep_indices = np.arange(len(labels), dtype=np.int64)
     current_kind = args.input_kind
 
@@ -349,10 +364,6 @@ def main() -> int:
     else:
         if pseudo_labels is not None:
             pseudo_labels = labels_to_int(pseudo_labels)
-            if args.limit:
-                pseudo_labels = pseudo_labels[:args.limit]
-        if overhead_values is not None and args.limit:
-            overhead_values = overhead_values[:args.limit]
 
     detector_data = prepare_detector_data(
         data,
@@ -391,6 +402,7 @@ def main() -> int:
     summary = {
         "input_npz": str(args.input_npz),
         "input_kind": args.input_kind,
+        "exclude_labels": [int(label) for label in args.exclude_labels],
         "defense": {
             "type": args.defense,
             "generator_dir": str(args.generator_dir) if args.generator_dir else None,

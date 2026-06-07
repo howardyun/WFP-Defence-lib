@@ -9,7 +9,13 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from .burst import apply_burst_perturbation, overhead_ratio, soft_burst_to_direction
+from .burst import (
+    apply_burst_perturbation,
+    hard_burst_to_direction,
+    overhead_ratio,
+    soft_burst_to_direction,
+    straight_through_burst_to_direction,
+)
 from .data import BurstDataset, select_by_pseudo
 from .detector import format_detector_input
 from .generator import BurstGenerator, GeneratorConfig
@@ -31,6 +37,7 @@ class TrainConfig:
     detector_input_kind: str = "direction"
     detector_input_layout: str = "ncl"
     detector_input_length: int = 5000
+    projection_mode: str = "ste"
     soft_projection_tau: float = 1.5
     projection_chunk_size: int = 128
     seed: int = 1
@@ -39,16 +46,35 @@ class TrainConfig:
 def _detector_input_from_bursts(
     bursts: torch.Tensor,
     config: TrainConfig,
+    *,
+    projection_mode: str | None = None,
 ) -> torch.Tensor:
     if config.detector_input_kind == "burst":
         detector_features = bursts
     elif config.detector_input_kind == "direction":
-        detector_features = soft_burst_to_direction(
-            bursts,
-            trace_len=config.detector_input_length,
-            tau=config.soft_projection_tau,
-            chunk_size=config.projection_chunk_size,
-        )
+        mode = projection_mode or config.projection_mode
+        if mode == "soft":
+            detector_features = soft_burst_to_direction(
+                bursts,
+                trace_len=config.detector_input_length,
+                tau=config.soft_projection_tau,
+                chunk_size=config.projection_chunk_size,
+            )
+        elif mode == "hard":
+            detector_features = hard_burst_to_direction(
+                bursts,
+                trace_len=config.detector_input_length,
+                chunk_size=config.projection_chunk_size,
+            )
+        elif mode == "ste":
+            detector_features = straight_through_burst_to_direction(
+                bursts,
+                trace_len=config.detector_input_length,
+                tau=config.soft_projection_tau,
+                chunk_size=config.projection_chunk_size,
+            )
+        else:
+            raise ValueError(f"Unknown projection mode: {mode}")
     else:
         raise ValueError(f"Unknown detector input kind: {config.detector_input_kind}")
     return format_detector_input(

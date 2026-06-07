@@ -25,8 +25,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--overhead-tolerance", type=float)
     parser.add_argument("--attack-loss")
     parser.add_argument("--lambda-tv", type=float)
+    parser.add_argument("--projection-mode")
     parser.add_argument("--soft-projection-tau", type=float)
     parser.add_argument("--lr", type=float)
+    parser.add_argument("--detector-builder")
+    parser.add_argument("--detector-checkpoint")
+    parser.add_argument("--num-classes", type=int)
+    parser.add_argument("--eval-exclude-labels")
     parser.add_argument("--set-size", type=int)
     parser.add_argument("--cluster-count", type=int)
     parser.add_argument("--mapping")
@@ -49,8 +54,13 @@ def write_config(args: argparse.Namespace) -> int:
         "overhead_tolerance": args.overhead_tolerance,
         "attack_loss": args.attack_loss,
         "lambda_tv": args.lambda_tv,
+        "projection_mode": args.projection_mode,
         "soft_projection_tau": args.soft_projection_tau,
         "lr": args.lr,
+        "detector_builder": args.detector_builder,
+        "detector_checkpoint": args.detector_checkpoint,
+        "num_classes": args.num_classes,
+        "eval_exclude_labels": args.eval_exclude_labels,
         "set_size": args.set_size,
         "cluster_count": args.cluster_count,
         "mapping": args.mapping,
@@ -102,8 +112,13 @@ def collect(tune_dir: Path) -> list[dict[str, Any]]:
             "overhead_tolerance": config.get("overhead_tolerance"),
             "attack_loss": config.get("attack_loss"),
             "lambda_tv": config.get("lambda_tv"),
+            "projection_mode": config.get("projection_mode"),
             "soft_projection_tau": config.get("soft_projection_tau"),
             "lr": config.get("lr"),
+            "detector_builder": config.get("detector_builder"),
+            "detector_checkpoint": config.get("detector_checkpoint"),
+            "num_classes": config.get("num_classes"),
+            "eval_exclude_labels": config.get("eval_exclude_labels"),
             "set_size": config.get("set_size"),
             "cluster_count": config.get("cluster_count"),
             "mapping": config.get("mapping"),
@@ -131,8 +146,13 @@ def write_outputs(rows: list[dict[str, Any]], csv_path: Path, json_path: Path) -
         "overhead_tolerance",
         "attack_loss",
         "lambda_tv",
+        "projection_mode",
         "soft_projection_tau",
         "lr",
+        "detector_builder",
+        "detector_checkpoint",
+        "num_classes",
+        "eval_exclude_labels",
         "set_size",
         "cluster_count",
         "mapping",

@@ -27,6 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--detector-input-kind", choices=("burst", "direction"), default="direction")
     parser.add_argument("--detector-input-layout", choices=("nl", "ncl", "nchw"), default="ncl")
     parser.add_argument("--detector-input-length", type=int, default=5000)
+    parser.add_argument("--projection-mode", choices=("soft", "ste"), default="ste")
     parser.add_argument("--soft-projection-tau", type=float, default=1.5)
     parser.add_argument("--projection-chunk-size", type=int, default=128)
     parser.add_argument("--output-dir", required=True)
@@ -82,6 +83,7 @@ def main() -> int:
         detector_input_kind=args.detector_input_kind,
         detector_input_layout=args.detector_input_layout,
         detector_input_length=args.detector_input_length,
+        projection_mode=args.projection_mode,
         soft_projection_tau=args.soft_projection_tau,
         projection_chunk_size=args.projection_chunk_size,
         seed=args.seed,

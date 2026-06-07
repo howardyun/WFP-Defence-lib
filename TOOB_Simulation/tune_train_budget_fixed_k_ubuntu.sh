@@ -43,6 +43,8 @@ OVERHEAD_TOLERANCE="${OVERHEAD_TOLERANCE:-0.02}"
 ATTACK_LOSSES="${ATTACK_LOSSES:-true_prob}"
 # ALERT does not use an explicit TV smoothing term.
 LAMBDA_TV="${LAMBDA_TV:-0.0}"
+# Use hard direction values in the detector forward pass, with soft gradients backward.
+PROJECTION_MODE="${PROJECTION_MODE:-ste}"
 # Soft burst-to-direction sharpness used during training.
 SOFT_PROJECTION_TAU="${SOFT_PROJECTION_TAU:-1.5}"
 # Generator optimizer learning rate; ALERT uses Adam(1e-4).
@@ -92,6 +94,14 @@ PROFILE_METHOD="${PROFILE_METHOD:-super}"
 NORMALIZE="${NORMALIZE:-zscore}"
 # Labels excluded before clustering; 95 is usually the open-world label.
 EXCLUDE_LABELS="${EXCLUDE_LABELS:-95}"
+# CW DF detector model builder forwarded to tune_train_budget_ubuntu.sh.
+DF_BUILDER="${DF_BUILDER:-TOOB_Simulation/toob/wflib_df.py:DF}"
+# CW DF checkpoint forwarded to tune_train_budget_ubuntu.sh.
+DF_CHECKPOINT="${DF_CHECKPOINT:-TOOB_Simulation/checkpoints/df_cw/max_f1.pth}"
+# CW DF output classes: labels 0..94.
+NUM_CLASSES="${NUM_CLASSES:-95}"
+# Labels excluded before detector evaluation; default mirrors clustering exclusions.
+EVAL_EXCLUDE_LABELS="${EVAL_EXCLUDE_LABELS:-$EXCLUDE_LABELS}"
 # Random seed for fixed-K K-means.
 SEED="${SEED:-1}"
 # K-means restarts per K; higher is slower but more stable.
@@ -165,7 +175,12 @@ echo "  lambdas: $LAMBDA_OVERHEADS"
 echo "  overhead losses: $OVERHEAD_LOSSES"
 echo "  attack losses: $ATTACK_LOSSES"
 echo "  lambda tv: $LAMBDA_TV"
+echo "  projection mode: $PROJECTION_MODE"
 echo "  lr: $LR"
+echo "  detector builder: $DF_BUILDER"
+echo "  detector checkpoint: $DF_CHECKPOINT"
+echo "  num classes: $NUM_CLASSES"
+echo "  eval exclude labels: $EVAL_EXCLUDE_LABELS"
 echo "  full epochs/batch/noise: $FULL_EPOCHS/$FULL_BATCH_SIZE/$FULL_NOISE_DIM"
 
 echo "[0/3] Prepare shared burst dataset"
@@ -229,12 +244,17 @@ for cluster_count in $CLUSTER_COUNTS; do
   CLUSTER_COUNT="$cluster_count" \
   PROFILE_METHOD="$PROFILE_METHOD" \
   EXCLUDE_LABELS="$EXCLUDE_LABELS" \
+  EVAL_EXCLUDE_LABELS="$EVAL_EXCLUDE_LABELS" \
+  DF_BUILDER="$DF_BUILDER" \
+  DF_CHECKPOINT="$DF_CHECKPOINT" \
+  NUM_CLASSES="$NUM_CLASSES" \
   OVERHEAD_TARGETS="$OVERHEAD_TARGETS" \
   LAMBDA_OVERHEADS="$LAMBDA_OVERHEADS" \
   OVERHEAD_LOSSES="$OVERHEAD_LOSSES" \
   OVERHEAD_TOLERANCE="$OVERHEAD_TOLERANCE" \
   ATTACK_LOSSES="$ATTACK_LOSSES" \
   LAMBDA_TV="$LAMBDA_TV" \
+  PROJECTION_MODE="$PROJECTION_MODE" \
   SOFT_PROJECTION_TAU="$SOFT_PROJECTION_TAU" \
   LR="$LR" \
   FULL_EPOCHS="$FULL_EPOCHS" \

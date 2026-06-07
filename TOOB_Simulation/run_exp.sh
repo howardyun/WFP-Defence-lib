@@ -31,19 +31,20 @@ VALID_DATA_KEY="${VALID_DATA_KEY:-$DATA_KEY}"
 VALID_LABELS_KEY="${VALID_LABELS_KEY:-$LABELS_KEY}"
 VALID_LIMIT="${VALID_LIMIT:-}"
 MAPPING="${MAPPING:-}"
-DF_BUILDER="${DF_BUILDER:-TOOB_Simulation/checkpoints/df/DF.py:DF}"
-DF_CHECKPOINT="${DF_CHECKPOINT:-TOOB_Simulation/checkpoints/df/max_f1.pth}"
+DF_BUILDER="${DF_BUILDER:-TOOB_Simulation/toob/wflib_df.py:DF}"
+DF_CHECKPOINT="${DF_CHECKPOINT:-TOOB_Simulation/checkpoints/df_cw/max_f1.pth}"
 
 OUT_DIR="${OUT_DIR:-TOOB_Simulation/outputs}"
 MAX_BURSTS="${MAX_BURSTS:-2000}"
 TRACE_LEN="${TRACE_LEN:-5000}"
-NUM_CLASSES="${NUM_CLASSES:-96}"
+NUM_CLASSES="${NUM_CLASSES:-95}"
 PROJECTION_CHUNK_SIZE="${PROJECTION_CHUNK_SIZE:-64}"
 SOFT_PROJECTION_TAU="${SOFT_PROJECTION_TAU:-1.5}"
 SET_SIZE="${SET_SIZE:-30}"
 CLUSTER_ROUNDS="${CLUSTER_ROUNDS:-1}"
 PROFILE_METHOD="${PROFILE_METHOD:-super}"
 EXCLUDE_LABELS="${EXCLUDE_LABELS:-95}"
+EVAL_EXCLUDE_LABELS="${EVAL_EXCLUDE_LABELS:-$EXCLUDE_LABELS}"
 RUN_EVAL="${RUN_EVAL:-1}"
 EVAL_METRICS="${EVAL_METRICS:-accuracy precision recall f1}"
 EVAL_AVERAGE="${EVAL_AVERAGE:-macro}"
@@ -204,12 +205,17 @@ echo "[4/5] Export defended direction dataset"
   --round
 
 if [ "$RUN_EVAL" = "1" ]; then
+  EVAL_EXCLUDE_ARGS=""
+  if [ -n "$EVAL_EXCLUDE_LABELS" ]; then
+    EVAL_EXCLUDE_ARGS="--exclude-labels $EVAL_EXCLUDE_LABELS"
+  fi
   echo "[5/5] Evaluate defended dataset"
   "$PYTHON_EXE" TOOB_Simulation/EXP/05_evaluate_defense.py \
     --input-npz "$ADV_DIRECTION_NPZ" \
     --input-kind direction \
     --data-key data \
     --labels-key labels \
+    $EVAL_EXCLUDE_ARGS \
     --detector-builder "$DF_BUILDER" \
     --detector-checkpoint "$DF_CHECKPOINT" \
     --num-classes "$NUM_CLASSES" \

@@ -76,8 +76,8 @@ defended dataset 上做评测。
 你的 DF 模型通过 detector adapter 加载。默认模型结构和 checkpoint 是：
 
 ```text
-TOOB_Simulation/checkpoints/df/DF.py:DF
-TOOB_Simulation/checkpoints/df/max_f1.pth
+TOOB_Simulation/toob/wflib_df.py:DF
+TOOB_Simulation/checkpoints/df_cw/max_f1.pth
 ```
 
 ## 一键运行
@@ -251,9 +251,9 @@ TOOB_Simulation/EXP/03_train_generators.py
 python TOOB_Simulation/EXP/03_train_generators.py `
   --burst-npz TOOB_Simulation/outputs/burst_dataset.npz `
   --pseudo-npz TOOB_Simulation/outputs/pseudo_labels.npz `
-  --detector-builder TOOB_Simulation/checkpoints/df/DF.py:DF `
-  --detector-checkpoint TOOB_Simulation/checkpoints/df/max_f1.pth `
-  --num-classes 96 `
+  --detector-builder TOOB_Simulation/toob/wflib_df.py:DF `
+  --detector-checkpoint TOOB_Simulation/checkpoints/df_cw/max_f1.pth `
+  --num-classes 95 `
   --detector-input-kind direction `
   --detector-input-layout ncl `
   --detector-input-length 5000 `
@@ -291,10 +291,10 @@ pseudo_labels.npz  - 每条样本属于哪个伪标签
 soft burst-to-direction projection，把 burst 近似展开成 direction sequence，
 让 DF 的梯度可以反传回 `G_c`。
 
-当前 checkpoint 是 96 类输出，所以训练时使用：
+当前 CW checkpoint 是 95 类输出，所以训练时使用：
 
 ```text
---num-classes 96
+--num-classes 95
 ```
 
 如果只是快速测试某一个伪标签：
@@ -303,9 +303,9 @@ soft burst-to-direction projection，把 burst 近似展开成 direction sequenc
 python TOOB_Simulation/EXP/03_train_generators.py `
   --burst-npz TOOB_Simulation/outputs/burst_dataset.npz `
   --pseudo-npz TOOB_Simulation/outputs/pseudo_labels.npz `
-  --detector-builder TOOB_Simulation/checkpoints/df/DF.py:DF `
-  --detector-checkpoint TOOB_Simulation/checkpoints/df/max_f1.pth `
-  --num-classes 96 `
+  --detector-builder TOOB_Simulation/toob/wflib_df.py:DF `
+  --detector-checkpoint TOOB_Simulation/checkpoints/df_cw/max_f1.pth `
+  --num-classes 95 `
   --pseudo-labels 0 `
   --epochs 1 `
   --batch-size 8 `
@@ -427,9 +427,9 @@ python TOOB_Simulation/EXP/05_evaluate_defense.py `
   --input-kind direction `
   --data-key data `
   --labels-key labels `
-  --detector-builder TOOB_Simulation/checkpoints/df/DF.py:DF `
-  --detector-checkpoint TOOB_Simulation/checkpoints/df/max_f1.pth `
-  --num-classes 96 `
+  --detector-builder TOOB_Simulation/toob/wflib_df.py:DF `
+  --detector-checkpoint TOOB_Simulation/checkpoints/df_cw/max_f1.pth `
+  --num-classes 95 `
   --detector-input-kind direction `
   --detector-input-layout ncl `
   --max-trace-len 5000 `
@@ -474,9 +474,9 @@ python TOOB_Simulation/EXP/05_evaluate_defense.py `
   --max-bursts 2000 `
   --max-trace-len 5000 `
   --round `
-  --detector-builder TOOB_Simulation/checkpoints/df/DF.py:DF `
-  --detector-checkpoint TOOB_Simulation/checkpoints/df/max_f1.pth `
-  --num-classes 96 `
+  --detector-builder TOOB_Simulation/toob/wflib_df.py:DF `
+  --detector-checkpoint TOOB_Simulation/checkpoints/df_cw/max_f1.pth `
+  --num-classes 95 `
   --detector-input-kind direction `
   --detector-input-layout ncl `
   --metrics accuracy precision recall f1 `

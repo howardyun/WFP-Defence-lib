@@ -38,6 +38,8 @@ OVERHEAD_TOLERANCE="${OVERHEAD_TOLERANCE:-0.02}"
 ATTACK_LOSSES="${ATTACK_LOSSES:-true_prob}"
 # Weight of total-variation smoothing on generated burst padding.
 LAMBDA_TV="${LAMBDA_TV:-0.001}"
+# Burst-to-direction projection used while training: soft or ste.
+PROJECTION_MODE="${PROJECTION_MODE:-ste}"
 # Soft burst-to-direction sharpness used during training.
 SOFT_PROJECTION_TAU="${SOFT_PROJECTION_TAU:-1.5}"
 # Generator optimizer learning rate.
@@ -48,6 +50,14 @@ SET_SIZE="${SET_SIZE:-30}"
 PROFILE_METHOD="${PROFILE_METHOD:-super}"
 # Labels excluded before clustering.
 EXCLUDE_LABELS="${EXCLUDE_LABELS:-95}"
+# CW DF detector model builder used by each candidate run.
+DF_BUILDER="${DF_BUILDER:-TOOB_Simulation/toob/wflib_df.py:DF}"
+# CW DF checkpoint used by each candidate run.
+DF_CHECKPOINT="${DF_CHECKPOINT:-TOOB_Simulation/checkpoints/df_cw/max_f1.pth}"
+# CW DF output classes: labels 0..94.
+NUM_CLASSES="${NUM_CLASSES:-95}"
+# Labels excluded before detector evaluation; default mirrors clustering exclusions.
+EVAL_EXCLUDE_LABELS="${EVAL_EXCLUDE_LABELS:-$EXCLUDE_LABELS}"
 # Optional precomputed website-to-pseudo-label mapping JSON/NPY.
 MAPPING="${MAPPING:-}"
 # Optional fixed pseudo-label cluster count used for reporting when MAPPING is set.
@@ -143,7 +153,12 @@ echo "  lambdas: $LAMBDA_OVERHEADS"
 echo "  overhead losses: $OVERHEAD_LOSSES"
 echo "  attack losses: $ATTACK_LOSSES"
 echo "  lambda tv: $LAMBDA_TV"
+echo "  projection mode: $PROJECTION_MODE"
 echo "  lr: $LR"
+echo "  detector builder: $DF_BUILDER"
+echo "  detector checkpoint: $DF_CHECKPOINT"
+echo "  num classes: $NUM_CLASSES"
+echo "  eval exclude labels: $EVAL_EXCLUDE_LABELS"
 
 run_epochs="$(mode_epochs)"
 run_batch_size="$(mode_batch_size)"
@@ -187,8 +202,13 @@ for target in $OVERHEAD_TARGETS; do
           --overhead-tolerance "$OVERHEAD_TOLERANCE" \
           --attack-loss "$attack_loss" \
           --lambda-tv "$LAMBDA_TV" \
+          --projection-mode "$PROJECTION_MODE" \
           --soft-projection-tau "$SOFT_PROJECTION_TAU" \
           --lr "$LR" \
+          --detector-builder "$DF_BUILDER" \
+          --detector-checkpoint "$DF_CHECKPOINT" \
+          --num-classes "$NUM_CLASSES" \
+          --eval-exclude-labels "$EVAL_EXCLUDE_LABELS" \
           --set-size "$SET_SIZE" \
           "${CONFIG_CLUSTER_ARGS[@]}" \
           "${CONFIG_MAPPING_ARGS[@]}" \
@@ -213,11 +233,16 @@ for target in $OVERHEAD_TARGETS; do
         OVERHEAD_TOLERANCE="$OVERHEAD_TOLERANCE" \
         ATTACK_LOSS="$attack_loss" \
         LAMBDA_TV="$LAMBDA_TV" \
+        PROJECTION_MODE="$PROJECTION_MODE" \
         SOFT_PROJECTION_TAU="$SOFT_PROJECTION_TAU" \
         LR="$LR" \
         SET_SIZE="$SET_SIZE" \
         PROFILE_METHOD="$PROFILE_METHOD" \
         EXCLUDE_LABELS="$EXCLUDE_LABELS" \
+        EVAL_EXCLUDE_LABELS="$EVAL_EXCLUDE_LABELS" \
+        DF_BUILDER="$DF_BUILDER" \
+        DF_CHECKPOINT="$DF_CHECKPOINT" \
+        NUM_CLASSES="$NUM_CLASSES" \
         MAPPING="$MAPPING" \
         FULL_EPOCHS="$FULL_EPOCHS" \
         FULL_BATCH_SIZE="$FULL_BATCH_SIZE" \

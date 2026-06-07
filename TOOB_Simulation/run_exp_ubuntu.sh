@@ -39,10 +39,10 @@ VALID_LIMIT="${VALID_LIMIT:-}"
 MAPPING="${MAPPING:-}"
 # Reuse existing burst/pseudo-label intermediate files when they already exist.
 REUSE_INTERMEDIATES="${REUSE_INTERMEDIATES:-1}"
-# Detector model builder in file.py:function or module:function format.
-DF_BUILDER="${DF_BUILDER:-TOOB_Simulation/checkpoints/df/DF.py:DF}"
-# Detector checkpoint attacked during generator training and used for evaluation.
-DF_CHECKPOINT="${DF_CHECKPOINT:-TOOB_Simulation/checkpoints/df/max_f1.pth}"
+# CW DF detector model builder in file.py:function or module:function format.
+DF_BUILDER="${DF_BUILDER:-TOOB_Simulation/toob/wflib_df.py:DF}"
+# CW DF checkpoint attacked during generator training and used for evaluation.
+DF_CHECKPOINT="${DF_CHECKPOINT:-TOOB_Simulation/checkpoints/df_cw/max_f1.pth}"
 
 # Base output directory; smoke and one modes append suffixes.
 OUT_DIR="${OUT_DIR:-TOOB_Simulation/outputs}"
@@ -50,10 +50,12 @@ OUT_DIR="${OUT_DIR:-TOOB_Simulation/outputs}"
 MAX_BURSTS="${MAX_BURSTS:-2000}"
 # Maximum direction sequence length exported and evaluated by DF.
 TRACE_LEN="${TRACE_LEN:-5000}"
-# Number of detector output classes.
-NUM_CLASSES="${NUM_CLASSES:-96}"
+# Number of detector output classes. CW DF has labels 0..94.
+NUM_CLASSES="${NUM_CLASSES:-95}"
 # Soft projection chunk size; lower values use less GPU memory.
 PROJECTION_CHUNK_SIZE="${PROJECTION_CHUNK_SIZE:-64}"
+# Burst-to-direction projection used while training: ste uses hard forward values and soft gradients.
+PROJECTION_MODE="${PROJECTION_MODE:-ste}"
 # Soft burst-to-direction sharpness; lower is closer to hard expansion but can be less stable.
 SOFT_PROJECTION_TAU="${SOFT_PROJECTION_TAU:-1.5}"
 # Target number of original website labels per pseudo-label cluster.
@@ -64,6 +66,8 @@ CLUSTER_ROUNDS="${CLUSTER_ROUNDS:-1}"
 PROFILE_METHOD="${PROFILE_METHOD:-super}"
 # Labels excluded before clustering; 95 is usually the open-world label.
 EXCLUDE_LABELS="${EXCLUDE_LABELS:-95}"
+# Labels excluded before detector evaluation; default mirrors clustering exclusions.
+EVAL_EXCLUDE_LABELS="${EVAL_EXCLUDE_LABELS:-$EXCLUDE_LABELS}"
 # Whether to run detector evaluation after exporting the defended dataset.
 RUN_EVAL="${RUN_EVAL:-1}"
 # Metrics reported by the evaluator.
@@ -173,6 +177,7 @@ else
   echo "  BURST_NPZ PSEUDO_NPZ PSEUDO_JSON VALID_BURST_NPZ VALID_PSEUDO_NPZ VALID_PSEUDO_JSON REUSE_INTERMEDIATES"
   echo "  SET_SIZE CLUSTER_ROUNDS PROFILE_METHOD EXCLUDE_LABELS"
   echo "  LR OVERHEAD_THRESHOLD LAMBDA_OVERHEAD OVERHEAD_LOSS OVERHEAD_TOLERANCE LAMBDA_TV ATTACK_LOSS"
+  echo "  PROJECTION_MODE SOFT_PROJECTION_TAU PROJECTION_CHUNK_SIZE"
   echo "  RUN_EVAL EVAL_METRICS EVAL_AVERAGE"
   echo "  FULL_EPOCHS FULL_BATCH_SIZE FULL_NOISE_DIM"
   echo "  SMOKE_LIMIT SMOKE_EPOCHS SMOKE_BATCH_SIZE SMOKE_NOISE_DIM"
@@ -289,6 +294,7 @@ echo "[3/5] Train cluster-wise burst generators"
   --detector-input-kind direction \
   --detector-input-layout ncl \
   --detector-input-length "$TRACE_LEN" \
+  --projection-mode "$PROJECTION_MODE" \
   --soft-projection-tau "$SOFT_PROJECTION_TAU" \
   --projection-chunk-size "$PROJECTION_CHUNK_SIZE" \
   --output-dir "$GENERATOR_DIR" \
@@ -342,12 +348,19 @@ if [ "$RUN_EVAL" = "1" ]; then
   # shellcheck disable=SC2206
   # Split EVAL_METRICS into separate metric arguments.
   EVAL_METRIC_ARGS=($EVAL_METRICS)
+  EVAL_EXCLUDE_ARGS=()
+  if [ -n "$EVAL_EXCLUDE_LABELS" ]; then
+    # shellcheck disable=SC2206
+    # Split EVAL_EXCLUDE_LABELS into separate --exclude-labels values.
+    EVAL_EXCLUDE_ARGS=(--exclude-labels $EVAL_EXCLUDE_LABELS)
+  fi
   echo "[5/5] Evaluate defended dataset"
   "$PYTHON_BIN" TOOB_Simulation/EXP/05_evaluate_defense.py \
     --input-npz "$ADV_DIRECTION_NPZ" \
     --input-kind direction \
     --data-key data \
     --labels-key labels \
+    "${EVAL_EXCLUDE_ARGS[@]}" \
     --detector-builder "$DF_BUILDER" \
     --detector-checkpoint "$DF_CHECKPOINT" \
     --num-classes "$NUM_CLASSES" \

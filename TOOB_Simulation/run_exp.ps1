@@ -17,19 +17,20 @@ $ValidDataKey = if ($env:VALID_DATA_KEY) { $env:VALID_DATA_KEY } else { $DataKey
 $ValidLabelsKey = if ($env:VALID_LABELS_KEY) { $env:VALID_LABELS_KEY } else { $LabelsKey }
 $ValidLimit = if ($env:VALID_LIMIT) { $env:VALID_LIMIT } else { "" }
 $Mapping = if ($env:MAPPING) { $env:MAPPING } else { "" }
-$DfBuilder = if ($env:DF_BUILDER) { $env:DF_BUILDER } else { "TOOB_Simulation\checkpoints\df\DF.py:DF" }
-$DfCheckpoint = if ($env:DF_CHECKPOINT) { $env:DF_CHECKPOINT } else { "TOOB_Simulation\checkpoints\df\max_f1.pth" }
+$DfBuilder = if ($env:DF_BUILDER) { $env:DF_BUILDER } else { "TOOB_Simulation\toob\wflib_df.py:DF" }
+$DfCheckpoint = if ($env:DF_CHECKPOINT) { $env:DF_CHECKPOINT } else { "TOOB_Simulation\checkpoints\df_cw\max_f1.pth" }
 
 $OutDir = if ($env:OUT_DIR) { $env:OUT_DIR } else { "TOOB_Simulation\outputs" }
 $MaxBursts = if ($env:MAX_BURSTS) { $env:MAX_BURSTS } else { "2000" }
 $TraceLen = if ($env:TRACE_LEN) { $env:TRACE_LEN } else { "5000" }
-$NumClasses = if ($env:NUM_CLASSES) { $env:NUM_CLASSES } else { "96" }
+$NumClasses = if ($env:NUM_CLASSES) { $env:NUM_CLASSES } else { "95" }
 $ProjectionChunkSize = if ($env:PROJECTION_CHUNK_SIZE) { $env:PROJECTION_CHUNK_SIZE } else { "64" }
 $SoftProjectionTau = if ($env:SOFT_PROJECTION_TAU) { $env:SOFT_PROJECTION_TAU } else { "1.5" }
 $SetSize = if ($env:SET_SIZE) { $env:SET_SIZE } else { "30" }
 $ClusterRounds = if ($env:CLUSTER_ROUNDS) { $env:CLUSTER_ROUNDS } else { "1" }
 $ProfileMethod = if ($env:PROFILE_METHOD) { $env:PROFILE_METHOD } else { "super" }
 $ExcludeLabels = if ($env:EXCLUDE_LABELS) { $env:EXCLUDE_LABELS } else { "95" }
+$EvalExcludeLabels = if ($env:EVAL_EXCLUDE_LABELS) { $env:EVAL_EXCLUDE_LABELS } else { $ExcludeLabels }
 $RunEval = if ($env:RUN_EVAL) { $env:RUN_EVAL } else { "1" }
 $EvalMetrics = if ($env:EVAL_METRICS) { $env:EVAL_METRICS } else { "accuracy precision recall f1" }
 $EvalAverage = if ($env:EVAL_AVERAGE) { $env:EVAL_AVERAGE } else { "macro" }
@@ -171,11 +172,16 @@ Write-Host "[4/5] Export defended direction dataset"
 if ($RunEval -eq "1") {
     Write-Host "[5/5] Evaluate defended dataset"
     $EvalMetricArgs = $EvalMetrics.Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries)
+    $EvalExcludeArgs = @()
+    if ($EvalExcludeLabels) {
+        $EvalExcludeArgs = @("--exclude-labels") + $EvalExcludeLabels.Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries)
+    }
     & $PythonExe TOOB_Simulation\EXP\05_evaluate_defense.py `
         --input-npz $AdvDirectionNpz `
         --input-kind direction `
         --data-key data `
         --labels-key labels `
+        @EvalExcludeArgs `
         --detector-builder $DfBuilder `
         --detector-checkpoint $DfCheckpoint `
         --num-classes $NumClasses `
