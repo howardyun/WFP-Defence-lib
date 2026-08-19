@@ -33,6 +33,7 @@ class TrainConfig:
     overhead_tolerance: float = 0.0
     lambda_tv: float = 0.001
     attack_loss: str = "true_logit"
+    lambda_attack: float = 1.0
     lambda_unknown: float = 0.0
     unknown_loss: str = "to_unknown"
     detector_input_kind: str = "direction"
@@ -138,11 +139,13 @@ def train_one_generator(
                 tolerance=config.overhead_tolerance,
             )
             loss_tv = total_variation_loss(delta)
-            loss = loss_attack + config.lambda_overhead * loss_overhead + config.lambda_tv * loss_tv
-            loss_unknown = None
-            if config.lambda_unknown > 0.0:
-                loss_unknown = unknown_logit_loss(logits, y, mode=config.unknown_loss)
-                loss = loss + config.lambda_unknown * loss_unknown
+            loss_unknown = unknown_logit_loss(logits, y, mode=config.unknown_loss)
+            loss = (
+                config.lambda_attack * loss_attack
+                + config.lambda_unknown * loss_unknown
+                + config.lambda_overhead * loss_overhead
+                + config.lambda_tv * loss_tv
+            )
 
             optimizer.zero_grad()
             loss.backward()
@@ -167,7 +170,7 @@ def train_one_generator(
             row = {
                 "loss": float(loss.detach().cpu()),
                 "attack": float(loss_attack.detach().cpu()),
-                "unknown": float(loss_unknown.detach().cpu()) if loss_unknown is not None else 0.0,
+                "unknown": float(loss_unknown.detach().cpu()),
                 "overhead_loss": float(loss_overhead.detach().cpu()),
                 "tv": float(loss_tv.detach().cpu()),
                 "overhead": float(overhead.detach().cpu()),

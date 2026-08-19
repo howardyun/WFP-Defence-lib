@@ -42,6 +42,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--overhead-tolerance", type=float, default=0.0)
     parser.add_argument("--lambda-tv", type=float, default=0.001)
     parser.add_argument("--attack-loss", choices=("true_prob", "true_logit", "negative_ce"), default="true_logit")
+    parser.add_argument("--lambda-attack", type=float, default=1.0, help="Weight of the untargeted attack (distance) loss; 0 disables it.")
     parser.add_argument("--lambda-unknown", type=float, default=0.0, help="Weight of the unknown/open-world logit loss; 0 disables it.")
     parser.add_argument("--unknown-loss", choices=("to_unknown", "peto", "combined"), default="to_unknown")
     parser.add_argument("--seed", type=int, default=1)
@@ -81,6 +82,7 @@ def main() -> int:
         overhead_tolerance=args.overhead_tolerance,
         lambda_tv=args.lambda_tv,
         attack_loss=args.attack_loss,
+        lambda_attack=args.lambda_attack,
         lambda_unknown=args.lambda_unknown,
         unknown_loss=args.unknown_loss,
         detector_input_kind=args.detector_input_kind,

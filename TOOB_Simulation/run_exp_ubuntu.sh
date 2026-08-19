@@ -103,6 +103,8 @@ OVERHEAD_TOLERANCE="${OVERHEAD_TOLERANCE:-0.02}"
 LAMBDA_TV="${LAMBDA_TV:-0.001}"
 # Generator attack objective: true_prob, true_logit, or negative_ce.
 ATTACK_LOSS="${ATTACK_LOSS:-true_logit}"
+# Weight of the untargeted attack (distance) loss; 0 disables it.
+LAMBDA_ATTACK="${LAMBDA_ATTACK:-1}"
 # Weight of the unknown/open-world logit loss; 0 disables it.
 LAMBDA_UNKNOWN="${LAMBDA_UNKNOWN:-0}"
 # Unknown/open-world loss mode: to_unknown, peto, or combined.
@@ -322,6 +324,7 @@ echo "[3/5] Train cluster-wise burst generators"
   --overhead-tolerance "$OVERHEAD_TOLERANCE" \
   --lambda-tv "$LAMBDA_TV" \
   --attack-loss "$ATTACK_LOSS" \
+  --lambda-attack "$LAMBDA_ATTACK" \
   --lambda-unknown "$LAMBDA_UNKNOWN" \
   --unknown-loss "$UNKNOWN_LOSS" \
   --detector-input-kind direction \
