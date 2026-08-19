@@ -18,6 +18,33 @@ def untargeted_attack_loss(logits: torch.Tensor, labels: torch.Tensor, mode: str
     raise ValueError(f"Unknown attack loss mode: {mode}")
 
 
+def unknown_logit_loss(
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+    mode: str = "to_unknown",
+    unknown_label: int | None = None,
+) -> torch.Tensor:
+    """Loss that pushes defended traces toward the unknown/open-world class.
+
+    The detector is expected to have an extra class for the unknown/unmonitored
+    website (by default the last class). ``to_unknown`` maximizes that class
+    logit directly; ``peto`` only requires the unknown logit to exceed the true
+    class logit; ``combined`` lowers the true logit while raising the unknown.
+    """
+    if unknown_label is None:
+        unknown_label = logits.shape[1] - 1
+
+    if mode == "to_unknown":
+        return -logits[:, unknown_label].mean()
+    if mode == "peto":
+        true_logit = logits.gather(1, labels.view(-1, 1)).squeeze(1)
+        return torch.relu(true_logit - logits[:, unknown_label]).mean()
+    if mode == "combined":
+        true_logit = logits.gather(1, labels.view(-1, 1)).squeeze(1)
+        return true_logit.mean() - logits[:, unknown_label].mean()
+    raise ValueError(f"Unknown unknown-loss mode: {mode}")
+
+
 def overhead_hinge_loss(original: torch.Tensor, defended: torch.Tensor, threshold: float) -> torch.Tensor:
     overhead = overhead_ratio(original, defended)
     return torch.relu(overhead - threshold).mean()

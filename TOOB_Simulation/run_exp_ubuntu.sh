@@ -62,6 +62,10 @@ SOFT_PROJECTION_TAU="${SOFT_PROJECTION_TAU:-1.5}"
 SET_SIZE="${SET_SIZE:-30}"
 # Number of clustering rounds; TOOB currently expects 1 because each site maps to one pseudo-label.
 CLUSTER_ROUNDS="${CLUSTER_ROUNDS:-1}"
+# Clustering algorithm: greedy (set-size nearest neighbour) or kmeans (fixed K).
+CLUSTER_METHOD="${CLUSTER_METHOD:-greedy}"
+# Number of clusters for kmeans; empty derives ceil(num_sites/set_size).
+NUM_CLUSTERS="${NUM_CLUSTERS:-}"
 # Burst profile used for website clustering: super, mean_abs, or mean_signed.
 PROFILE_METHOD="${PROFILE_METHOD:-super}"
 # Whether to use an MLP autoencoder to learn a low-dim burst representation for clustering.
@@ -99,6 +103,10 @@ OVERHEAD_TOLERANCE="${OVERHEAD_TOLERANCE:-0.02}"
 LAMBDA_TV="${LAMBDA_TV:-0.001}"
 # Generator attack objective: true_prob, true_logit, or negative_ce.
 ATTACK_LOSS="${ATTACK_LOSS:-true_logit}"
+# Weight of the unknown/open-world logit loss; 0 disables it.
+LAMBDA_UNKNOWN="${LAMBDA_UNKNOWN:-0}"
+# Unknown/open-world loss mode: to_unknown, peto, or combined.
+UNKNOWN_LOSS="${UNKNOWN_LOSS:-to_unknown}"
 
 # Smoke-mode sample limit.
 SMOKE_LIMIT="${SMOKE_LIMIT:-200}"
@@ -273,6 +281,11 @@ if [ "$USE_ENCODER" = "1" ]; then
   ENCODER_ARGS=(--use-encoder --latent-dim "$LATENT_DIM" --encoder-epochs "$ENCODER_EPOCHS" --encoder-batch-size "$ENCODER_BATCH_SIZE" --encoder-lr "$ENCODER_LR")
 fi
 
+CLUSTER_ARGS=(--cluster-method "$CLUSTER_METHOD")
+if [ "$CLUSTER_METHOD" = "kmeans" ] && [ -n "$NUM_CLUSTERS" ]; then
+  CLUSTER_ARGS+=(--num-clusters "$NUM_CLUSTERS")
+fi
+
 echo "[2/5] Cluster burst profiles -> pseudo labels"
 if [ "$REUSE_INTERMEDIATES" = "1" ] && [ -f "$PSEUDO_NPZ" ] && [ -f "$PSEUDO_JSON" ]; then
   echo "reuse: $PSEUDO_NPZ"
@@ -287,6 +300,7 @@ else
     --profile-method "$PROFILE_METHOD" \
     --drop-unmapped \
     "${MAPPING_ARGS[@]}" \
+    "${CLUSTER_ARGS[@]}" \
     "${ENCODER_ARGS[@]}" \
     "${EXCLUDE_ARGS[@]}"
 fi
@@ -308,6 +322,8 @@ echo "[3/5] Train cluster-wise burst generators"
   --overhead-tolerance "$OVERHEAD_TOLERANCE" \
   --lambda-tv "$LAMBDA_TV" \
   --attack-loss "$ATTACK_LOSS" \
+  --lambda-unknown "$LAMBDA_UNKNOWN" \
+  --unknown-loss "$UNKNOWN_LOSS" \
   --detector-input-kind direction \
   --detector-input-layout ncl \
   --detector-input-length "$TRACE_LEN" \

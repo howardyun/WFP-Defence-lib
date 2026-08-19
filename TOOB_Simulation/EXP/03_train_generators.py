@@ -42,6 +42,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--overhead-tolerance", type=float, default=0.0)
     parser.add_argument("--lambda-tv", type=float, default=0.001)
     parser.add_argument("--attack-loss", choices=("true_prob", "true_logit", "negative_ce"), default="true_logit")
+    parser.add_argument("--lambda-unknown", type=float, default=0.0, help="Weight of the unknown/open-world logit loss; 0 disables it.")
+    parser.add_argument("--unknown-loss", choices=("to_unknown", "peto", "combined"), default="to_unknown")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     return parser.parse_args()
@@ -79,6 +81,8 @@ def main() -> int:
         overhead_tolerance=args.overhead_tolerance,
         lambda_tv=args.lambda_tv,
         attack_loss=args.attack_loss,
+        lambda_unknown=args.lambda_unknown,
+        unknown_loss=args.unknown_loss,
         detector_input_kind=args.detector_input_kind,
         detector_input_layout=args.detector_input_layout,
         detector_input_length=args.detector_input_length,

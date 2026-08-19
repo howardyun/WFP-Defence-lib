@@ -19,7 +19,7 @@ from .burst import (
 from .data import BurstDataset, select_by_pseudo
 from .detector import format_detector_input
 from .generator import BurstGenerator, GeneratorConfig
-from .losses import overhead_budget_loss, total_variation_loss, untargeted_attack_loss
+from .losses import overhead_budget_loss, total_variation_loss, untargeted_attack_loss, unknown_logit_loss
 
 
 @dataclass
@@ -33,6 +33,8 @@ class TrainConfig:
     overhead_tolerance: float = 0.0
     lambda_tv: float = 0.001
     attack_loss: str = "true_logit"
+    lambda_unknown: float = 0.0
+    unknown_loss: str = "to_unknown"
     detector_input_kind: str = "direction"
     detector_input_layout: str = "ncl"
     detector_input_length: int = 5000
@@ -137,6 +139,10 @@ def train_one_generator(
             )
             loss_tv = total_variation_loss(delta)
             loss = loss_attack + config.lambda_overhead * loss_overhead + config.lambda_tv * loss_tv
+            loss_unknown = None
+            if config.lambda_unknown > 0.0:
+                loss_unknown = unknown_logit_loss(logits, y, mode=config.unknown_loss)
+                loss = loss + config.lambda_unknown * loss_unknown
 
             optimizer.zero_grad()
             loss.backward()
@@ -149,6 +155,8 @@ def train_one_generator(
                 adv_pred = torch.argmax(logits, dim=1)
                 adv_acc = torch.mean((adv_pred == y).float())
                 attack_success = 1.0 - adv_acc
+                unknown_label = logits.shape[1] - 1
+                unknown_ratio = torch.mean((adv_pred == unknown_label).float())
 
                 clean_x = _detector_input_from_bursts(x, config)
                 clean_logits = _unwrap_logits(detector(clean_x))
@@ -159,12 +167,14 @@ def train_one_generator(
             row = {
                 "loss": float(loss.detach().cpu()),
                 "attack": float(loss_attack.detach().cpu()),
+                "unknown": float(loss_unknown.detach().cpu()) if loss_unknown is not None else 0.0,
                 "overhead_loss": float(loss_overhead.detach().cpu()),
                 "tv": float(loss_tv.detach().cpu()),
                 "overhead": float(overhead.detach().cpu()),
                 "true_prob": float(true_prob.detach().cpu()),
                 "adv_acc": float(adv_acc.detach().cpu()),
                 "attack_success": float(attack_success.detach().cpu()),
+                "unknown_ratio": float(unknown_ratio.detach().cpu()),
                 "clean_acc": float(clean_acc.detach().cpu()),
                 "clean_true_prob": float(clean_true_prob.detach().cpu()),
             }
@@ -182,12 +192,14 @@ def train_one_generator(
         metric_keys = (
             "loss",
             "attack",
+            "unknown",
             "overhead_loss",
             "tv",
             "overhead",
             "true_prob",
             "adv_acc",
             "attack_success",
+            "unknown_ratio",
             "clean_acc",
             "clean_true_prob",
         )
