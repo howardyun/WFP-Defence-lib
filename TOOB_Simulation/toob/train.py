@@ -27,13 +27,12 @@ class TrainConfig:
     epochs: int = 30
     batch_size: int = 64
     lr: float = 1e-4
-    noise_dim: int = 256
     overhead_threshold: float = 0.22
     lambda_overhead: float = 1.0
     overhead_loss: str = "hinge"
     overhead_tolerance: float = 0.0
     lambda_tv: float = 0.001
-    attack_loss: str = "true_prob"
+    attack_loss: str = "true_logit"
     detector_input_kind: str = "direction"
     detector_input_layout: str = "ncl"
     detector_input_length: int = 5000
@@ -109,7 +108,7 @@ def train_one_generator(
     generator = torch.Generator().manual_seed(config.seed + int(pseudo_label))
     loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True, generator=generator)
 
-    gen_config = GeneratorConfig(noise_dim=config.noise_dim, burst_len=bursts.shape[1])
+    gen_config = GeneratorConfig(burst_len=bursts.shape[1])
     model = BurstGenerator(gen_config).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
 
@@ -122,9 +121,8 @@ def train_one_generator(
             x, y, _ = batch
             x = x.to(device)
             y = y.to(device)
-            z = torch.randn(x.shape[0], config.noise_dim, device=device)
 
-            delta = model(z)
+            delta = model(x)
             adv = apply_burst_perturbation(x, delta)
             detector_x = _detector_input_from_bursts(adv, config)
             logits = _unwrap_logits(detector(detector_x))

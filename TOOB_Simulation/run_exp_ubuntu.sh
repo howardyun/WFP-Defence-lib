@@ -64,6 +64,16 @@ SET_SIZE="${SET_SIZE:-30}"
 CLUSTER_ROUNDS="${CLUSTER_ROUNDS:-1}"
 # Burst profile used for website clustering: super, mean_abs, or mean_signed.
 PROFILE_METHOD="${PROFILE_METHOD:-super}"
+# Whether to use an MLP autoencoder to learn a low-dim burst representation for clustering.
+USE_ENCODER="${USE_ENCODER:-0}"
+# Latent dimension of the clustering autoencoder.
+LATENT_DIM="${LATENT_DIM:-128}"
+# Training epochs for the clustering autoencoder.
+ENCODER_EPOCHS="${ENCODER_EPOCHS:-40}"
+# Batch size for the clustering autoencoder.
+ENCODER_BATCH_SIZE="${ENCODER_BATCH_SIZE:-256}"
+# Learning rate for the clustering autoencoder.
+ENCODER_LR="${ENCODER_LR:-1e-3}"
 # Labels excluded before clustering; 95 is usually the open-world label.
 EXCLUDE_LABELS="${EXCLUDE_LABELS:-95}"
 # Labels excluded before detector evaluation; default mirrors clustering exclusions.
@@ -88,7 +98,7 @@ OVERHEAD_TOLERANCE="${OVERHEAD_TOLERANCE:-0.02}"
 # Weight of total-variation smoothing on generated burst padding.
 LAMBDA_TV="${LAMBDA_TV:-0.001}"
 # Generator attack objective: true_prob, true_logit, or negative_ce.
-ATTACK_LOSS="${ATTACK_LOSS:-true_prob}"
+ATTACK_LOSS="${ATTACK_LOSS:-true_logit}"
 
 # Smoke-mode sample limit.
 SMOKE_LIMIT="${SMOKE_LIMIT:-200}"
@@ -257,6 +267,12 @@ if [ -n "$EXCLUDE_LABELS" ]; then
   EXCLUDE_ARGS=(--exclude-labels $EXCLUDE_LABELS)
 fi
 
+ENCODER_ARGS=()
+if [ "$USE_ENCODER" = "1" ]; then
+  # Use an MLP autoencoder to learn a low-dim burst representation for clustering.
+  ENCODER_ARGS=(--use-encoder --latent-dim "$LATENT_DIM" --encoder-epochs "$ENCODER_EPOCHS" --encoder-batch-size "$ENCODER_BATCH_SIZE" --encoder-lr "$ENCODER_LR")
+fi
+
 echo "[2/5] Cluster burst profiles -> pseudo labels"
 if [ "$REUSE_INTERMEDIATES" = "1" ] && [ -f "$PSEUDO_NPZ" ] && [ -f "$PSEUDO_JSON" ]; then
   echo "reuse: $PSEUDO_NPZ"
@@ -271,6 +287,7 @@ else
     --profile-method "$PROFILE_METHOD" \
     --drop-unmapped \
     "${MAPPING_ARGS[@]}" \
+    "${ENCODER_ARGS[@]}" \
     "${EXCLUDE_ARGS[@]}"
 fi
 

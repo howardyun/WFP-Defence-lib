@@ -5,12 +5,14 @@ import json
 from pathlib import Path
 
 import numpy as np
+import torch
 
 from _bootstrap import ensure_project_root
 
-ensure_project_root(required_modules=("cluster", "data", "pseudo"))
-from toob.cluster import cluster_websites, evaluate_cluster_quality
+ensure_project_root(required_modules=("cluster", "data", "encoder", "pseudo"))
+from toob.cluster import cluster_websites, cluster_websites_from_profiles, evaluate_cluster_quality
 from toob.data import load_npz_dataset, save_npz_dataset
+from toob.encoder import encode_website_profiles, train_autoencoder
 from toob.pseudo import labels_to_pseudo, load_website_to_pseudo_label
 
 
@@ -25,7 +27,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--set-size", type=int, default=30, help="Target anonymity set size.")
     parser.add_argument("--rounds", type=int, default=1, help="Number of clustering rounds.")
     parser.add_argument("--profile-method", choices=("super", "mean_abs", "mean_signed"), default="super")
+    parser.add_argument("--use-encoder", action="store_true", help="Use an MLP autoencoder latent representation for clustering.")
+    parser.add_argument("--latent-dim", type=int, default=128)
+    parser.add_argument("--encoder-epochs", type=int, default=40)
+    parser.add_argument("--encoder-batch-size", type=int, default=256)
+    parser.add_argument("--encoder-lr", type=float, default=1e-3)
     parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     return parser.parse_args()
 
 
@@ -33,6 +41,7 @@ def main() -> int:
     args = parse_args()
     bursts, labels = load_npz_dataset(args.labels_npz)
     exclude_labels = set(args.exclude_labels)
+    latent_profiles = None
     if args.mapping:
         website_to_pseudo_label = load_website_to_pseudo_label(args.mapping)
         grouped: dict[int, list[int]] = {}
@@ -45,26 +54,54 @@ def main() -> int:
         cluster_info = None
         source = "mapping"
     else:
-        cluster_result = cluster_websites(
-            bursts,
-            labels,
-            set_size=args.set_size,
-            rounds=args.rounds,
-            seed=args.seed,
-            exclude_labels=exclude_labels,
-            profile_method=args.profile_method,
-        )
+        if args.use_encoder:
+            device = torch.device(args.device)
+            torch.manual_seed(args.seed)
+            np.random.seed(args.seed)
+            model = train_autoencoder(
+                bursts,
+                latent_dim=args.latent_dim,
+                epochs=args.encoder_epochs,
+                batch_size=args.encoder_batch_size,
+                lr=args.encoder_lr,
+                seed=args.seed,
+                device=device,
+            )
+            _site_labels, latent_profiles = encode_website_profiles(
+                model,
+                bursts,
+                labels,
+                exclude_labels=exclude_labels,
+                device=device,
+            )
+            cluster_result = cluster_websites_from_profiles(
+                latent_profiles,
+                set_size=args.set_size,
+                seed=args.seed,
+            )
+        else:
+            cluster_result = cluster_websites(
+                bursts,
+                labels,
+                set_size=args.set_size,
+                rounds=args.rounds,
+                seed=args.seed,
+                exclude_labels=exclude_labels,
+                profile_method=args.profile_method,
+            )
         website_to_pseudo_label = cluster_result.website_to_pseudo_label
         pseudo_label_to_websites = cluster_result.pseudo_label_to_websites
         cluster_info = {
             "set_size": int(args.set_size),
             "rounds": int(args.rounds),
             "profile_method": args.profile_method,
+            "use_encoder": bool(args.use_encoder),
+            "latent_dim": int(args.latent_dim) if args.use_encoder else None,
             "excluded_labels": sorted(int(v) for v in exclude_labels),
             "site_labels": [int(v) for v in cluster_result.labels],
             "num_pseudo_labels": len(cluster_result.pseudo_label_to_websites),
         }
-        source = "toob_cluster"
+        source = "toob_cluster_encoder" if args.use_encoder else "toob_cluster"
     pseudo, keep_indices = labels_to_pseudo(
         labels,
         website_to_pseudo_label,
@@ -77,6 +114,7 @@ def main() -> int:
         website_to_pseudo_label,
         profile_method=args.profile_method,
         exclude_labels=exclude_labels,
+        profiles=latent_profiles,
     )
     save_npz_dataset(args.output, labels=kept_labels, pseudo_labels=pseudo, keep_indices=keep_indices)
     unique, counts = np.unique(pseudo, return_counts=True)

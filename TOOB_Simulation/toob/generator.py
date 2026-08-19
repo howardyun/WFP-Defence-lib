@@ -8,7 +8,6 @@ from torch import nn
 
 @dataclass
 class GeneratorConfig:
-    noise_dim: int = 256
     burst_len: int = 2000
     hidden_dims: tuple[int, ...] = (512, 512, 1024, 1024)
     dropout: float = 0.05
@@ -21,17 +20,18 @@ class GeneratorConfig:
     @classmethod
     def from_dict(cls, data: dict) -> "GeneratorConfig":
         copied = dict(data)
+        copied.pop("noise_dim", None)
         copied["hidden_dims"] = tuple(copied.get("hidden_dims", (512, 512, 1024, 1024)))
         return cls(**copied)
 
 
 class BurstGenerator(nn.Module):
-    """MLP generator that outputs non-negative burst padding amounts."""
+    """MLP generator that maps a burst trace to non-negative burst padding amounts."""
 
     def __init__(self, config: GeneratorConfig) -> None:
         super().__init__()
         layers: list[nn.Module] = []
-        in_dim = config.noise_dim
+        in_dim = config.burst_len
         for hidden_dim in config.hidden_dims:
             layers.append(nn.Linear(in_dim, hidden_dim))
             layers.append(nn.ReLU())
@@ -43,8 +43,8 @@ class BurstGenerator(nn.Module):
         self.net = nn.Sequential(*layers)
         self.config = config
 
-    def forward(self, z: torch.Tensor) -> torch.Tensor:
-        return self.net(z)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.net(x)
 
 
 def build_generator_from_checkpoint(checkpoint: dict, map_location: str | torch.device = "cpu") -> BurstGenerator:

@@ -57,8 +57,14 @@ def evaluate_cluster_quality(
     *,
     profile_method: str = "super",
     exclude_labels: set[int] | None = None,
+    profiles: dict[int, np.ndarray] | None = None,
 ) -> dict:
-    """Evaluate pseudo-label cluster quality on per-website burst profiles."""
+    """Evaluate pseudo-label cluster quality on per-website burst profiles.
+
+    When ``profiles`` is provided it is used directly instead of computing
+    ``_profile`` from ``bursts``; this lets callers evaluate clustering done in
+    a learned latent space.
+    """
     labels_int = labels_to_int(labels)
     exclude_labels = exclude_labels or set()
     observed_labels = sorted(
@@ -79,11 +85,14 @@ def evaluate_cluster_quality(
             "per_cluster": {},
         }
 
-    profiles: dict[int, np.ndarray] = {}
+    profile_vectors: dict[int, np.ndarray] = {}
     sample_counts: dict[int, int] = {}
     for label in observed_labels:
         mask = labels_int == label
-        profiles[label] = _profile(bursts[mask], method=profile_method)
+        if profiles is not None:
+            profile_vectors[label] = np.asarray(profiles[label], dtype=np.float64)
+        else:
+            profile_vectors[label] = _profile(bursts[mask], method=profile_method)
         sample_counts[label] = int(np.sum(mask))
 
     grouped: dict[int, list[int]] = {}
@@ -92,7 +101,7 @@ def evaluate_cluster_quality(
     grouped = {key: sorted(value) for key, value in sorted(grouped.items())}
 
     label_to_index = {label: idx for idx, label in enumerate(observed_labels)}
-    stacked_profiles = np.stack([profiles[label] for label in observed_labels], axis=0)
+    stacked_profiles = np.stack([profile_vectors[label] for label in observed_labels], axis=0)
     distance_matrix = np.linalg.norm(
         stacked_profiles[:, np.newaxis, :] - stacked_profiles[np.newaxis, :, :],
         axis=2,
@@ -103,7 +112,7 @@ def evaluate_cluster_quality(
     centroid_profiles = {}
     for pseudo_label, websites in grouped.items():
         indices = [label_to_index[label] for label in websites]
-        cluster_profiles = np.stack([profiles[label] for label in websites], axis=0)
+        cluster_profiles = np.stack([profile_vectors[label] for label in websites], axis=0)
         centroid = np.mean(cluster_profiles, axis=0)
         centroid_profiles[pseudo_label] = centroid
 
@@ -168,6 +177,71 @@ def evaluate_cluster_quality(
     }
 
 
+def _greedy_cluster(
+    profiles: dict[int, np.ndarray],
+    *,
+    set_size: int,
+    seed: int,
+) -> list[list[int]]:
+    """Greedy nearest-neighbour clustering over precomputed per-website profiles."""
+    remaining = sorted(profiles.keys())
+    rng = np.random.default_rng(seed)
+    rng.shuffle(remaining)
+
+    used: set[int] = set()
+    total_sets: list[list[int]] = []
+    for label in remaining:
+        if label in used:
+            continue
+        pool = [lbl for lbl in remaining if lbl not in used and lbl != label]
+        if not pool:
+            anonymity_set = [label]
+        else:
+            distances = [
+                (np.linalg.norm(profiles[label] - profiles[other]), other)
+                for other in pool
+            ]
+            distances.sort(key=lambda x: x[0])
+            neighbours = [label] + [lbl for _, lbl in distances[: set_size - 1]]
+            anonymity_set = sorted(neighbours)
+
+        for lbl in anonymity_set:
+            used.add(lbl)
+        total_sets.append(anonymity_set)
+    return total_sets
+
+
+def _result_from_sets(total_sets: list[list[int]]) -> ClusterResult:
+    pseudo_label_to_websites = {
+        pseudo_label: websites
+        for pseudo_label, websites in enumerate(total_sets)
+    }
+    website_to_pseudo_label = {
+        website: pseudo_label
+        for pseudo_label, websites in pseudo_label_to_websites.items()
+        for website in websites
+    }
+    labels = sorted(website for websites in total_sets for website in websites)
+    return ClusterResult(
+        website_to_pseudo_label=website_to_pseudo_label,
+        pseudo_label_to_websites=pseudo_label_to_websites,
+        labels=labels,
+        total_sets=total_sets,
+    )
+
+
+def cluster_websites_from_profiles(
+    profiles: dict[int, np.ndarray],
+    *,
+    set_size: int = 30,
+    seed: int = 1,
+) -> ClusterResult:
+    """Cluster website labels using precomputed per-website profile vectors."""
+    if not profiles:
+        raise ValueError("No website profiles provided")
+    return _result_from_sets(_greedy_cluster(profiles, set_size=set_size, seed=seed))
+
+
 def cluster_websites(
     bursts: np.ndarray,
     labels: np.ndarray,
@@ -186,57 +260,14 @@ def cluster_websites(
     exclude_labels = exclude_labels or set()
     if rounds != 1:
         raise ValueError("TOOB pseudo labels assign each website to one cluster; please keep rounds=1.")
-    rng = np.random.default_rng(seed)
 
     unique_labels = sorted(set(int(v) for v in labels_int) - exclude_labels)
     if not unique_labels:
         raise ValueError("No labels remaining after exclusions")
 
-    # Build per-website profiles
     profiles: dict[int, np.ndarray] = {}
     for label in unique_labels:
         mask = labels_int == label
         profiles[label] = _profile(bursts[mask], method=profile_method)
 
-    remaining = list(unique_labels)
-    total_sets: list[list[int]] = []
-
-    for _round in range(rounds):
-        rng.shuffle(remaining)
-        used: set[int] = set()
-        for label in remaining:
-            if label in used:
-                continue
-            # Greedy nearest-neighbour clustering
-            pool = [l for l in remaining if l not in used and l != label]
-            if not pool:
-                anonymity_set = [label]
-            else:
-                distances = [
-                    (np.linalg.norm(profiles[label] - profiles[other]), other)
-                    for other in pool
-                ]
-                distances.sort(key=lambda x: x[0])
-                neighbours = [label] + [lbl for _, lbl in distances[: set_size - 1]]
-                anonymity_set = sorted(neighbours)
-
-            for lbl in anonymity_set:
-                used.add(lbl)
-            total_sets.append(anonymity_set)
-
-    pseudo_label_to_websites = {
-        pseudo_label: websites
-        for pseudo_label, websites in enumerate(total_sets)
-    }
-    website_to_pseudo_label = {
-        website: pseudo_label
-        for pseudo_label, websites in pseudo_label_to_websites.items()
-        for website in websites
-    }
-
-    return ClusterResult(
-        website_to_pseudo_label=website_to_pseudo_label,
-        pseudo_label_to_websites=pseudo_label_to_websites,
-        labels=unique_labels,
-        total_sets=total_sets,
-    )
+    return _result_from_sets(_greedy_cluster(profiles, set_size=set_size, seed=seed))

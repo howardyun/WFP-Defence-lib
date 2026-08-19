@@ -35,13 +35,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--noise-dim", type=int, default=256)
+    parser.add_argument("--noise-dim", type=int, default=256, help="Deprecated: generator is conditional on burst input.")
     parser.add_argument("--overhead-threshold", type=float, default=0.22)
     parser.add_argument("--lambda-overhead", type=float, default=1.0)
     parser.add_argument("--overhead-loss", choices=("hinge", "target_l1", "target_l2", "band"), default="hinge")
     parser.add_argument("--overhead-tolerance", type=float, default=0.0)
     parser.add_argument("--lambda-tv", type=float, default=0.001)
-    parser.add_argument("--attack-loss", choices=("true_prob", "true_logit", "negative_ce"), default="true_prob")
+    parser.add_argument("--attack-loss", choices=("true_prob", "true_logit", "negative_ce"), default="true_logit")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     return parser.parse_args()
@@ -73,7 +73,6 @@ def main() -> int:
         epochs=args.epochs,
         batch_size=args.batch_size,
         lr=args.lr,
-        noise_dim=args.noise_dim,
         overhead_threshold=args.overhead_threshold,
         lambda_overhead=args.lambda_overhead,
         overhead_loss=args.overhead_loss,

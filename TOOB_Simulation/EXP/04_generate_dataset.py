@@ -67,13 +67,11 @@ def main() -> int:
             raise KeyError(f"Missing generator for pseudo label {pseudo_label}")
         model = generators[pseudo_label]
         indices = np.flatnonzero(pseudo_labels == pseudo_label)
-        noise_dim = model.config.noise_dim
         for start in tqdm(range(0, len(indices), args.batch_size), desc=f"pseudo={pseudo_label}"):
             batch_indices = indices[start:start + args.batch_size]
             x = torch.from_numpy(bursts[batch_indices].astype(np.float32)).to(device)
-            z = torch.randn(x.shape[0], noise_dim, device=device)
             with torch.no_grad():
-                delta = model(z)
+                delta = model(x)
                 adv = apply_burst_perturbation(x, delta, round_output=args.round)
                 batch_overhead = overhead_ratio(x, adv).detach().cpu().numpy()
             defended[batch_indices] = adv.detach().cpu().numpy()
