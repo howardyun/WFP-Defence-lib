@@ -271,3 +271,93 @@ def cluster_websites(
         profiles[label] = _profile(bursts[mask], method=profile_method)
 
     return _result_from_sets(_greedy_cluster(profiles, set_size=set_size, seed=seed))
+
+
+def build_website_profiles(
+    bursts: np.ndarray,
+    labels: np.ndarray,
+    *,
+    exclude_labels: set[int] | None = None,
+    profile_method: str = "super",
+) -> tuple[list[int], dict[int, np.ndarray]]:
+    """Build per-website profile vectors from burst data."""
+    labels_int = labels_to_int(labels)
+    exclude_labels = exclude_labels or set()
+    site_labels = sorted(set(int(v) for v in labels_int) - exclude_labels)
+    if not site_labels:
+        raise ValueError("No labels remaining after exclusions")
+    profiles = {
+        label: _profile(bursts[labels_int == label], method=profile_method)
+        for label in site_labels
+    }
+    return site_labels, profiles
+
+
+def _kmeans_labels(
+    x: np.ndarray,
+    k: int,
+    *,
+    seed: int,
+    restarts: int = 20,
+    max_iter: int = 100,
+) -> np.ndarray:
+    """K-means clustering returning the best labels over several restarts."""
+    n = x.shape[0]
+    best_labels: np.ndarray | None = None
+    best_inertia: float | None = None
+    for offset in range(restarts):
+        rng = np.random.default_rng(seed + offset * 1009)
+        centers = x[rng.choice(n, size=k, replace=False)].copy()
+        labels = np.zeros(n, dtype=np.int64)
+        for _ in range(max_iter):
+            distances = np.sum((x[:, None, :] - centers[None, :, :]) ** 2, axis=2)
+            new_labels = np.argmin(distances, axis=1)
+            if np.array_equal(new_labels, labels):
+                labels = new_labels
+                break
+            labels = new_labels
+            for c in range(k):
+                members = x[labels == c]
+                if len(members) == 0:
+                    farthest = int(np.argmax(np.min(distances, axis=1)))
+                    centers[c] = x[farthest]
+                else:
+                    centers[c] = members.mean(axis=0)
+        distances = np.sum((x[:, None, :] - centers[None, :, :]) ** 2, axis=2)
+        inertia = float(np.sum(np.min(distances, axis=1)))
+        if best_inertia is None or inertia < best_inertia:
+            best_inertia = inertia
+            best_labels = labels
+    assert best_labels is not None
+    return best_labels
+
+
+def cluster_websites_kmeans(
+    profiles: dict[int, np.ndarray],
+    *,
+    num_clusters: int,
+    seed: int = 1,
+    restarts: int = 20,
+    max_iter: int = 100,
+) -> ClusterResult:
+    """Cluster website profiles with K-means.
+
+    Unlike the greedy set-size clustering, K-means is sensitive to the quality
+    of the profile representation, so learned (encoder) representations can
+    actually change the resulting website groups.
+    """
+    site_labels = sorted(profiles.keys())
+    if num_clusters < 2:
+        raise ValueError("num_clusters must be >= 2")
+    if len(site_labels) < num_clusters:
+        raise ValueError(f"num_clusters ({num_clusters}) exceeds website count ({len(site_labels)})")
+
+    x = np.stack([np.asarray(profiles[s], dtype=np.float64) for s in site_labels], axis=0)
+    labels = _kmeans_labels(x, num_clusters, seed=seed, restarts=restarts, max_iter=max_iter)
+
+    total_sets = [
+        sorted(site_labels[i] for i in np.flatnonzero(labels == c))
+        for c in range(num_clusters)
+    ]
+    total_sets = [s for s in total_sets if s]
+    return _result_from_sets(total_sets)
